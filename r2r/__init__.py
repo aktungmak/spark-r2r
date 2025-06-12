@@ -62,7 +62,7 @@ class Mapping:
         )
         return reduce(lambda df1, df2: df1.union(df2), map_queries)
 
-    def to_dlt(self, name: str) -> str:
+    def to_dlt(self, spark: SparkSession, name: str) -> str:
         """
         If you are using DLT, this can be used in a pipline to define
         a flow based on the mapping.
@@ -74,6 +74,6 @@ class Mapping:
 
         @dlt.table(name=name)
         def t():
-            return self.to_df()
+            return self.to_df(spark)
 
         return name
