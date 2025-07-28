@@ -36,9 +36,12 @@ class Mapping:
     metadata_columns: dict[str, Column] = field(default_factory=dict)
 
     def rdfs_domain(self) -> list[tuple]:
-        return [
-            (pred, "rdfs:domain", self.rdf_type) for pred in self.predicate_object_maps
-        ]
+        if self.rdf_type:
+            return [
+                (pred, "rdfs:domain", self.rdf_type) for pred in self.predicate_object_maps
+            ]
+        else:
+            return []
 
     def _po_maps(self) -> Iterator[tuple[str, Column]]:
         if self.rdf_type is not None:
@@ -56,6 +59,7 @@ class Mapping:
         metadata_columns = [
             mc.alias(name) for name, mc in self.metadata_columns.items()
         ]
+        filter_expr = self.filter if self.filter is not None else lit(True)
         map_queries = (
             source.select(
                 self.subject_map.alias(SUBJECT_COLUMN),
@@ -63,7 +67,7 @@ class Mapping:
                 object_expr.alias(OBJECT_COLUMN),
                 *metadata_columns,
             )
-            .filter(self.filter or lit(True))
+            .filter(filter_expr)
             for predicate, object_expr in self._po_maps()
         )
         union_df = reduce(lambda df1, df2: df1.union(df2), map_queries)
