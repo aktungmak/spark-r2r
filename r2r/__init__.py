@@ -6,6 +6,10 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.column import Column
 from pyspark.sql.functions import lit
 
+SUBJECT_COLUMN = "s"
+PREDICATE_COLUMN = "p"
+OBJECT_COLUMN = "o"
+
 @dataclass
 class Mapping:
     """
@@ -25,6 +29,8 @@ class Mapping:
     rdf_type: Optional[str] = None
     # Optionally filter the data in the table before the transformation.
     filter: Optional[Column] = None
+    # eliminate rows in the output with nulls in the object column
+    filter_null_obj: Optional[bool] = True
     # Additional columns to be added alongside the subject, predicate and
     # object columns. A common example is to add a timestamp to the triple.
     metadata_columns: dict[str, Column] = field(default_factory=dict)
@@ -52,25 +58,25 @@ class Mapping:
         ]
         map_queries = (
             source.select(
-                self.subject_map.alias("s"),
-                lit(predicate).alias("p"),
-                object_expr.alias("o"),
+                self.subject_map.alias(SUBJECT_COLUMN),
+                lit(predicate).alias(PREDICATE_COLUMN),
+                object_expr.alias(OBJECT_COLUMN),
                 *metadata_columns,
             )
             .filter(self.filter or lit(True))
             for predicate, object_expr in self._po_maps()
         )
-        return reduce(lambda df1, df2: df1.union(df2), map_queries)
+        union_df = reduce(lambda df1, df2: df1.union(df2), map_queries)
+        if self.filter_null_obj:
+            union_df = union_df.dropna(subset=OBJECT_COLUMN)
+        return union_df
 
     def to_dlt(self, spark: SparkSession, name: str) -> str:
         """
         If you are using DLT, this can be used in a pipline to define
         a flow based on the mapping.
         """
-        try:
-            import dlt
-        except ImportError:
-            raise ImportError("not running in DLT enabled cluster")
+        import dlt
 
         @dlt.table(name=name)
         def t():
