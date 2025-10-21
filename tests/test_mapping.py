@@ -7,7 +7,7 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, lit, when
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
-from r2r import Mapping, SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN
+from r2r import Mapping, SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN, RDF_TYPE_IRI, RDFS_DOMAIN_IRI
 
 
 class TestMapping(TestCase):
@@ -121,8 +121,8 @@ class TestMapping(TestCase):
 
         domain = mapping.rdfs_domain()
         expected = [
-            ("name", "rdfs:domain", "http://example.org/User"),
-            ("email", "rdfs:domain", "http://example.org/User")
+            ("name", RDFS_DOMAIN_IRI, "http://example.org/User"),
+            ("email", RDFS_DOMAIN_IRI, "http://example.org/User")
         ]
         self.assertEqual(domain, expected)
 
@@ -200,7 +200,7 @@ class TestMapping(TestCase):
         predicates = [row[PREDICATE_COLUMN] for row in result_data]
         objects = [row[OBJECT_COLUMN] for row in result_data]
 
-        self.assertIn("rdf:type", predicates)
+        self.assertIn(RDF_TYPE_IRI, predicates)
         self.assertIn("http://example.org/User", objects)
 
     def test_to_df_with_filter(self):
@@ -327,7 +327,7 @@ class TestMapping(TestCase):
         self.assertEqual(len(po_maps), 3)
 
         # Check that rdf:type comes first
-        self.assertEqual(po_maps[0][0], "rdf:type")
+        self.assertEqual(po_maps[0][0], RDF_TYPE_IRI)
 
         # Check that predicate_object_maps are included
         predicate_names = [item[0] for item in po_maps[1:]]

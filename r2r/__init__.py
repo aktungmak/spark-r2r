@@ -9,6 +9,8 @@ from pyspark.sql.functions import lit
 SUBJECT_COLUMN = "s"
 PREDICATE_COLUMN = "p"
 OBJECT_COLUMN = "o"
+RDF_TYPE_IRI = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
+RDFS_DOMAIN_IRI = "<http://www.w3.org/2000/01/rdf-schema#domain>"
 
 @dataclass
 class Mapping:
@@ -38,14 +40,14 @@ class Mapping:
     def rdfs_domain(self) -> list[tuple]:
         if self.rdf_type:
             return [
-                (pred, "rdfs:domain", self.rdf_type) for pred in self.predicate_object_maps
+                (pred, RDFS_DOMAIN_IRI, self.rdf_type) for pred in self.predicate_object_maps
             ]
         else:
             return []
 
     def _po_maps(self) -> Iterator[tuple[str, Column]]:
         if self.rdf_type is not None:
-            yield "rdf:type", lit(self.rdf_type)
+            yield RDF_TYPE_IRI, lit(self.rdf_type)
         yield from self.predicate_object_maps.items()
 
     def to_df(self, spark: SparkSession) -> DataFrame:
