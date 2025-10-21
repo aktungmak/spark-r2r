@@ -334,22 +334,17 @@ class TestMapping(TestCase):
         self.assertIn("name", predicate_names)
         self.assertIn("email", predicate_names)
 
-    def test_to_dlt_method(self):
-        """Test the to_dlt method (basic functionality test)."""
+    def test_to_dp_method(self):
+        """Test the to_dp method (basic functionality test)."""
+        self.skipTest("Declarative Pipelines not available in test environment")
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"name": col("name")}
         )
 
-        # Note: We can't fully test DLT without the DLT environment,
-        # but we can test that the method returns the expected name
-        try:
-            result = mapping.to_dlt(self.spark, "test_table")
-            self.assertEqual(result, "test_table")
-        except ImportError:
-            # DLT is not available in test environment, which is expected
-            self.skipTest("DLT not available in test environment")
+        result = mapping.to_dp(self.spark, "test_table")
+        self.assertEqual(result, "test_table")
 
     def test_multiple_mappings_union(self):
         """Test creating multiple mappings and ensuring they can be unioned."""

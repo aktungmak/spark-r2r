@@ -77,14 +77,11 @@ class Mapping:
             union_df = union_df.dropna(subset=OBJECT_COLUMN)
         return union_df
 
-    def to_dlt(self, spark: SparkSession, name: str) -> str:
-        """
-        If you are using DLT, this can be used in a pipline to define
-        a flow based on the mapping.
-        """
-        import dlt
+    def to_dp(self, spark: SparkSession, name: str) -> str:
+        """Create a Spark Declarative Pipelines flow for the mapping"""
+        from pyspark import pipelines as dp
 
-        @dlt.table(name=name)
+        @dp.table(name=name)
         def t():
             return self.to_df(spark)
 
