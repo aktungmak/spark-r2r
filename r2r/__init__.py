@@ -12,8 +12,8 @@ SUBJECT_COLUMN = "s"
 PREDICATE_COLUMN = "p"
 OBJECT_COLUMN = "o"
 OBJECT_TYPE_COLUMN = "ot"
-RDF_TYPE_IRI = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
-RDFS_DOMAIN_IRI = "<http://www.w3.org/2000/01/rdf-schema#domain>"
+RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_DOMAIN_IRI = "http://www.w3.org/2000/01/rdf-schema#domain"
 
 XSD_PREFIX = "http://www.w3.org/2001/XMLSchema#"
 
