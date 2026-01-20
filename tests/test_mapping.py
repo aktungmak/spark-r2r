@@ -7,7 +7,15 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, lit, when
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
-from r2r import Mapping, SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN, RDF_TYPE_IRI, RDFS_DOMAIN_IRI
+from r2r import (
+    Mapping,
+    SUBJECT_COLUMN,
+    PREDICATE_COLUMN,
+    OBJECT_COLUMN,
+    OBJECT_TYPE_COLUMN,
+    RDF_TYPE_IRI,
+    RDFS_DOMAIN_IRI,
+)
 
 
 class TestMapping(TestCase):
@@ -32,12 +40,14 @@ class TestMapping(TestCase):
             (3, "bob.wilson@example.com", "Bob Wilson", "user"),
             (4, None, "Anonymous User", "guest"),  # Test null email
         ]
-        self.users_schema = StructType([
-            StructField("id", IntegerType(), True),
-            StructField("email", StringType(), True),
-            StructField("name", StringType(), True),
-            StructField("role", StringType(), True)
-        ])
+        self.users_schema = StructType(
+            [
+                StructField("id", IntegerType(), True),
+                StructField("email", StringType(), True),
+                StructField("name", StringType(), True),
+                StructField("role", StringType(), True),
+            ]
+        )
         self.users_df = self.spark.createDataFrame(self.users_data, self.users_schema)
 
         # Create sample data for products
@@ -46,13 +56,19 @@ class TestMapping(TestCase):
             (102, "Mouse", "Electronics", 29.99),
             (103, "Book", "Literature", 19.99),
         ]
-        self.products_schema = StructType([
-            StructField("product_id", IntegerType(), True),
-            StructField("name", StringType(), True),
-            StructField("category", StringType(), True),
-            StructField("price", StringType(), True)  # Using string for price to test different data types
-        ])
-        self.products_df = self.spark.createDataFrame(self.products_data, self.products_schema)
+        self.products_schema = StructType(
+            [
+                StructField("product_id", IntegerType(), True),
+                StructField("name", StringType(), True),
+                StructField("category", StringType(), True),
+                StructField(
+                    "price", StringType(), True
+                ),  # Using string for price to test different data types
+            ]
+        )
+        self.products_df = self.spark.createDataFrame(
+            self.products_data, self.products_schema
+        )
 
         # Register tables in catalog for testing string source
         self.users_df.createOrReplaceTempView("test_users")
@@ -63,7 +79,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         self.assertIsInstance(mapping.source, DataFrame)
@@ -81,7 +97,7 @@ class TestMapping(TestCase):
             rdf_type="http://example.org/User",
             filter=col("role") != "guest",
             filter_null_obj=False,
-            metadata_columns={"timestamp": lit("2024-01-01")}
+            metadata_columns={"timestamp": lit("2024-01-01")},
         )
 
         self.assertEqual(mapping.rdf_type, "http://example.org/User")
@@ -94,7 +110,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source="test_users",
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         self.assertEqual(mapping.source, "test_users")
@@ -104,7 +120,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")}
+            predicate_object_maps={"name": col("name"), "email": col("email")},
         )
 
         domain = mapping.rdfs_domain()
@@ -116,13 +132,13 @@ class TestMapping(TestCase):
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"name": col("name"), "email": col("email")},
-            rdf_type="http://example.org/User"
+            rdf_type="http://example.org/User",
         )
 
         domain = mapping.rdfs_domain()
         expected = [
             ("name", RDFS_DOMAIN_IRI, "http://example.org/User"),
-            ("email", RDFS_DOMAIN_IRI, "http://example.org/User")
+            ("email", RDFS_DOMAIN_IRI, "http://example.org/User"),
         ]
         self.assertEqual(domain, expected)
 
@@ -131,13 +147,18 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")}
+            predicate_object_maps={"name": col("name"), "email": col("email")},
         )
 
         result_df = mapping.to_df(self.spark)
 
         # Check schema
-        expected_columns = [SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN]
+        expected_columns = [
+            SUBJECT_COLUMN,
+            PREDICATE_COLUMN,
+            OBJECT_COLUMN,
+            OBJECT_TYPE_COLUMN,
+        ]
         self.assertEqual(result_df.columns, expected_columns)
 
         # Check row count (2 predicates * 4 users = 8 rows, minus null email = 7 rows due to filter_null_obj)
@@ -167,7 +188,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source="test_users",
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         result_df = mapping.to_df(self.spark)
@@ -187,7 +208,7 @@ class TestMapping(TestCase):
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"name": col("name")},
-            rdf_type="http://example.org/User"
+            rdf_type="http://example.org/User",
         )
 
         result_df = mapping.to_df(self.spark)
@@ -209,7 +230,7 @@ class TestMapping(TestCase):
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"name": col("name")},
-            filter=col("role") != "guest"
+            filter=col("role") != "guest",
         )
 
         result_df = mapping.to_df(self.spark)
@@ -228,7 +249,7 @@ class TestMapping(TestCase):
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"email": col("email")},
-            filter_null_obj=False
+            filter_null_obj=False,
         )
 
         result_df = mapping.to_df(self.spark)
@@ -250,14 +271,21 @@ class TestMapping(TestCase):
             predicate_object_maps={"name": col("name")},
             metadata_columns={
                 "timestamp": lit("2024-01-01"),
-                "source_system": lit("test_system")
-            }
+                "source_system": lit("test_system"),
+            },
         )
 
         result_df = mapping.to_df(self.spark)
 
         # Check that metadata columns are included
-        expected_columns = [SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN, "timestamp", "source_system"]
+        expected_columns = [
+            SUBJECT_COLUMN,
+            PREDICATE_COLUMN,
+            OBJECT_COLUMN,
+            OBJECT_TYPE_COLUMN,
+            "timestamp",
+            "source_system",
+        ]
         self.assertEqual(result_df.columns, expected_columns)
 
         # Check metadata column values
@@ -276,8 +304,10 @@ class TestMapping(TestCase):
             predicate_object_maps={
                 "name": col("name"),
                 "category": col("category"),
-                "expensive": when(col("price").cast("double") > 100, lit("yes")).otherwise(lit("no"))
-            }
+                "expensive": when(
+                    col("price").cast("double") > 100, lit("yes")
+                ).otherwise(lit("no")),
+            },
         )
 
         result_df = mapping.to_df(self.spark)
@@ -287,8 +317,11 @@ class TestMapping(TestCase):
 
         # Check that complex expression works
         result_data = result_df.collect()
-        expensive_objects = [row[OBJECT_COLUMN] for row in result_data
-                             if row[PREDICATE_COLUMN] == "expensive"]
+        expensive_objects = [
+            row[OBJECT_COLUMN]
+            for row in result_data
+            if row[PREDICATE_COLUMN] == "expensive"
+        ]
 
         self.assertIn("yes", expensive_objects)  # Laptop should be expensive
         self.assertIn("no", expensive_objects)  # Mouse and Book should not be expensive
@@ -300,7 +333,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=empty_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         result_df = mapping.to_df(self.spark)
@@ -309,7 +342,12 @@ class TestMapping(TestCase):
         self.assertEqual(result_df.count(), 0)
 
         # But should have correct schema
-        expected_columns = [SUBJECT_COLUMN, PREDICATE_COLUMN, OBJECT_COLUMN]
+        expected_columns = [
+            SUBJECT_COLUMN,
+            PREDICATE_COLUMN,
+            OBJECT_COLUMN,
+            OBJECT_TYPE_COLUMN,
+        ]
         self.assertEqual(result_df.columns, expected_columns)
 
     def test_po_maps_private_method(self):
@@ -318,7 +356,7 @@ class TestMapping(TestCase):
             source=self.users_df,
             subject_map=col("id"),
             predicate_object_maps={"name": col("name"), "email": col("email")},
-            rdf_type="http://example.org/User"
+            rdf_type="http://example.org/User",
         )
 
         po_maps = list(mapping._po_maps())
@@ -326,8 +364,9 @@ class TestMapping(TestCase):
         # Should have 3 items: rdf:type + 2 predicate_object_maps
         self.assertEqual(len(po_maps), 3)
 
-        # Check that rdf:type comes first
+        # Check that rdf:type comes first with None object_type (it's an IRI)
         self.assertEqual(po_maps[0][0], RDF_TYPE_IRI)
+        self.assertIsNone(po_maps[0][2])  # object_type should be None
 
         # Check that predicate_object_maps are included
         predicate_names = [item[0] for item in po_maps[1:]]
@@ -340,7 +379,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         result = mapping.to_dp(self.spark, "test_table")
@@ -351,13 +390,13 @@ class TestMapping(TestCase):
         mapping1 = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         mapping2 = Mapping(
             source=self.products_df,
             subject_map=col("product_id"),
-            predicate_object_maps={"name": col("name")}
+            predicate_object_maps={"name": col("name")},
         )
 
         df1 = mapping1.to_df(self.spark)
@@ -372,6 +411,124 @@ class TestMapping(TestCase):
 
         # Should have same schema
         self.assertEqual(df1.columns, df2.columns)
+
+    def test_object_type_with_typed_literals(self):
+        """Test that object types are correctly set for typed literals."""
+        XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+        XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer"
+
+        mapping = Mapping(
+            source=self.users_df,
+            subject_map=col("id"),
+            predicate_object_maps={
+                "name": (col("name"), XSD_STRING),
+                # Cast id to string to avoid union type mismatch, but specify integer type
+                "user_id": (col("id").cast("string"), XSD_INTEGER),
+            },
+        )
+
+        result_df = mapping.to_df(self.spark)
+        result_data = result_df.collect()
+
+        # Check that object types are correctly set
+        name_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "name"]
+        id_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "user_id"]
+
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_STRING for row in name_rows))
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_INTEGER for row in id_rows))
+
+    def test_object_type_with_language_tags(self):
+        """Test that language-tagged literals use @lang format."""
+        mapping = Mapping(
+            source=self.users_df,
+            subject_map=col("id"),
+            predicate_object_maps={
+                "name": (col("name"), "@en"),
+            },
+        )
+
+        result_df = mapping.to_df(self.spark)
+        result_data = result_df.collect()
+
+        # All object types should be @en
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == "@en" for row in result_data))
+
+    def test_object_type_none_for_iris(self):
+        """Test that IRIs (including rdf:type objects) have None as object type."""
+        mapping = Mapping(
+            source=self.users_df,
+            subject_map=col("id"),
+            predicate_object_maps={
+                "related": (col("email"), None),  # Treat as IRI
+            },
+            rdf_type="http://example.org/User",
+        )
+
+        result_df = mapping.to_df(self.spark)
+        result_data = result_df.collect()
+
+        # rdf:type rows should have None object_type
+        type_rows = [
+            row for row in result_data if row[PREDICATE_COLUMN] == RDF_TYPE_IRI
+        ]
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] is None for row in type_rows))
+
+        # "related" rows should also have None object_type
+        related_rows = [
+            row for row in result_data if row[PREDICATE_COLUMN] == "related"
+        ]
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] is None for row in related_rows))
+
+    def test_object_type_inferred_from_schema(self):
+        """Test that plain Column values infer object type from source schema."""
+        XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+
+        mapping = Mapping(
+            source=self.users_df,
+            subject_map=col("id"),
+            predicate_object_maps={
+                "name": col("name"),  # StringType -> xsd:string
+                "role": col("role"),  # StringType -> xsd:string
+            },
+        )
+
+        result_df = mapping.to_df(self.spark)
+        result_data = result_df.collect()
+
+        # Object types should be inferred from schema
+        name_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "name"]
+        role_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "role"]
+
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_STRING for row in name_rows))
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_STRING for row in role_rows))
+
+    def test_object_type_mixed_types(self):
+        """Test mixing explicit types, language tags, IRIs, and inferred types."""
+        XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+
+        mapping = Mapping(
+            source=self.users_df,
+            subject_map=col("id"),
+            predicate_object_maps={
+                "name": (col("name"), XSD_STRING),  # explicit typed literal
+                "label": (col("name"), "@en"),  # language tag
+                "sameAs": (col("email"), None),  # explicit IRI (no type)
+                "role": col("role"),  # inferred from schema (StringType -> xsd:string)
+            },
+        )
+
+        result_df = mapping.to_df(self.spark)
+        result_data = result_df.collect()
+
+        name_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "name"]
+        label_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "label"]
+        sameas_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "sameAs"]
+        role_rows = [row for row in result_data if row[PREDICATE_COLUMN] == "role"]
+
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_STRING for row in name_rows))
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == "@en" for row in label_rows))
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] is None for row in sameas_rows))
+        self.assertTrue(all(row[OBJECT_TYPE_COLUMN] == XSD_STRING for row in role_rows))
 
 
 if __name__ == "__main__":
