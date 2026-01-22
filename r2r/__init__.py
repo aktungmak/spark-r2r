@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import Optional, Union
@@ -6,7 +7,6 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.column import Column
 from pyspark.sql.functions import lit
 import pyspark.sql.types as spark_types
-
 
 SUBJECT_COLUMN = "s"
 PREDICATE_COLUMN = "p"
@@ -23,7 +23,6 @@ _INFER = object()
 # Type alias: value is Column (infer type) or (Column, object_type)
 # Use (Column, None) to explicitly mark as IRI (no type)
 ObjectMapValue = Union[Column, tuple[Column, Optional[str]]]
-
 
 _SPARK_TYPE_TO_XSD = {
     spark_types.StringType: f"{XSD_PREFIX}string",
@@ -140,9 +139,21 @@ class Mapping:
 
     def to_dp(self, spark: SparkSession, name: str) -> str:
         """Create a Spark Declarative Pipelines flow for the mapping"""
-        from pyspark import pipelines as dp
+        warnings.warn("Please use to_materialized_view or to_temporary_view instead", DeprecationWarning)
+        return self.to_materialized_view(spark, name)
 
-        @dp.table(name=name)
+    def to_materialized_view(self, spark: SparkSession, name: str) -> str:
+        """Create a Spark Declarative Pipelines materialised view for the mapping"""
+        from pyspark.pipelines import materialized_view
+        return self._to_dp(materialized_view, spark, name)
+
+    def to_temporary_view(self, spark: SparkSession, name: str) -> str:
+        """Create a Spark Declarative Pipelines temporary view for the mapping"""
+        from pyspark.pipelines import temporary_view
+        return self._to_dp(temporary_view, spark, name)
+
+    def _to_dp(self, decorator, spark: SparkSession, name: str) -> str:
+        @decorator(name=name)
         def t():
             return self.to_df(spark)
 
