@@ -1,7 +1,7 @@
 from functools import reduce
 
 from pyspark.sql.functions import col, when, explode
-import dlt
+from pyspark import pipelines as dp
 
 import iri
 from r2r import Mapping
@@ -51,7 +51,9 @@ mappings = [
         predicate_object_maps={
             iri.pred("column_name"): col("column_name"),
             iri.pred("column_data_type"): col("data_type"),
-            iri.pred("in_table"): iri.table("table_catalog", "table_schema", "table_name"),
+            iri.pred("in_table"): iri.table(
+                "table_catalog", "table_schema", "table_name"
+            ),
         },
     ),
     Mapping(
@@ -78,7 +80,8 @@ mappings = [
             ).when(
                 col("compute.cluster_id").isNotNull(),
                 iri.cluster("workspace_id", "compute.cluster_id"),
-            ), }
+            ),
+        },
     ),
     Mapping(
         source="system.compute.warehouses",
@@ -109,7 +112,8 @@ mappings = [
         predicate_object_maps={
             iri.pred("user_id"): col("id"),
             iri.pred("user_email"): explode("emails"),
-        }),
+        },
+    ),
     Mapping(
         source=PIPELINES_TABLE,
         subject_map=iri.pipeline("workspace_id", "id"),
@@ -138,13 +142,10 @@ mappings = [
     ),
 ]
 
-mapped_names = [mapping.to_dlt(mapping.source) for mapping in mappings]
+mapped_names = [mapping.to_materialized_view(mapping.source) for mapping in mappings]
 
 
-@dlt.table(name="all_mapped_tables", comment="Union of all mapped tables")
+@dp.materialized_view(name="all_mapped_tables", comment="Union of all mapped tables")
 def union_all_tables():
-    mapped_tables = (
-        dlt.read(mapped_name)
-        for mapped_name in mapped_names
-    )
+    mapped_tables = (dp.read(mapped_name) for mapped_name in mapped_names)
     return reduce(lambda df1, df2: df1.union(df2), mapped_tables)
