@@ -7,8 +7,8 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, lit, when
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
-from r2r import (
-    Mapping,
+from r2r import Mapping
+from r2r.mapping import (
     SUBJECT_COLUMN,
     PREDICATE_COLUMN,
     OBJECT_COLUMN,
