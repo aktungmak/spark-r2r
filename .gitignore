@@ -1,4 +1,3 @@
-.venv/
 .idea/
 __pycache__/
 pyu-data/
@@ -6,3 +5,5 @@ pyu-data/
 build/**
 dist/**
 *.py[cod]
+venv/
+.vscode/
