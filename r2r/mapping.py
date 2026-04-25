@@ -1,7 +1,7 @@
 import warnings
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import Optional, Union
+from typing import Iterator, Optional, Union
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.column import Column
@@ -61,7 +61,7 @@ class Mapping:
     # - Column: object expression, type inferred from source schema
     # - (Column, str): object expression with explicit type (XSD IRI or "@lang")
     # - (Column, None): object expression treated as IRI (no type)
-    predicate_object_maps: dict[str, ObjectMapValue]
+    predicate_object_maps: dict[str | Column, ObjectMapValue]
     # An optional IRI defining the rdf:type of the table being mapped.
     rdf_type: Optional[str] = None
     # Optionally filter the data in the table before the transformation.
@@ -70,7 +70,7 @@ class Mapping:
     filter_null_obj: Optional[bool] = True
     # Additional columns to be added alongside the subject, predicate and
     # object columns. A common example is to add a timestamp to the triple.
-    metadata_columns: dict[str, Column] = field(default_factory=dict)
+    metadata_columns: dict[str | Column, Column] = field(default_factory=dict)
 
     def rdfs_domain(self) -> list[tuple]:
         if self.rdf_type:
@@ -81,7 +81,7 @@ class Mapping:
         else:
             return []
 
-    def _po_maps(self):
+    def _po_maps(self) -> Iterator[tuple[Column, Column, Optional[str]]]:
         """Yields (predicate, object_expr, object_type) tuples.
 
         object_type is either:
@@ -90,13 +90,17 @@ class Mapping:
         - _INFER sentinel (infer type from schema)
         """
         if self.rdf_type is not None:
-            yield RDF_TYPE_IRI, lit(self.rdf_type), None  # rdf:type object is an IRI
+            yield lit(RDF_TYPE_IRI), lit(self.rdf_type), None
         for predicate, value in self.predicate_object_maps.items():
+            if isinstance(predicate, Column):
+                predicate_expr = predicate
+            else:
+                predicate_expr = lit(predicate)
             if isinstance(value, tuple):
                 object_expr, object_type = value
             else:
                 object_expr, object_type = value, _INFER  # Infer from schema
-            yield predicate, object_expr, object_type
+            yield predicate_expr, object_expr, object_type
 
     def to_df(self, spark: SparkSession) -> DataFrame:
         """
@@ -123,14 +127,14 @@ class Mapping:
         map_queries = (
             source.select(
                 self.subject_map.alias(SUBJECT_COLUMN),
-                lit(predicate).alias(PREDICATE_COLUMN),
+                predicate_expr.alias(PREDICATE_COLUMN),
                 object_expr.alias(OBJECT_COLUMN),
                 lit(resolve_object_type(object_expr, object_type)).alias(
                     OBJECT_TYPE_COLUMN
                 ),
                 *metadata_columns,
             ).filter(filter_expr)
-            for predicate, object_expr, object_type in self._po_maps()
+            for predicate_expr, object_expr, object_type in self._po_maps()
         )
         union_df = reduce(lambda df1, df2: df1.union(df2), map_queries)
         if self.filter_null_obj:
@@ -139,17 +143,22 @@ class Mapping:
 
     def to_dp(self, spark: SparkSession, name: str) -> str:
         """Create a Spark Declarative Pipelines flow for the mapping"""
-        warnings.warn("Please use to_materialized_view or to_temporary_view instead", DeprecationWarning)
+        warnings.warn(
+            "Please use to_materialized_view or to_temporary_view instead",
+            DeprecationWarning,
+        )
         return self.to_materialized_view(spark, name)
 
     def to_materialized_view(self, spark: SparkSession, name: str) -> str:
         """Create a Spark Declarative Pipelines materialised view for the mapping"""
         from pyspark.pipelines import materialized_view
+
         return self._to_dp(materialized_view, spark, name)
 
     def to_temporary_view(self, spark: SparkSession, name: str) -> str:
         """Create a Spark Declarative Pipelines temporary view for the mapping"""
         from pyspark.pipelines import temporary_view
+
         return self._to_dp(temporary_view, spark, name)
 
     def _to_dp(self, decorator, spark: SparkSession, name: str) -> str:

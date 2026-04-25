@@ -360,18 +360,19 @@ class TestMapping(TestCase):
         )
 
         po_maps = list(mapping._po_maps())
-
-        # Should have 3 items: rdf:type + 2 predicate_object_maps
         self.assertEqual(len(po_maps), 3)
 
-        # Check that rdf:type comes first with None object_type (it's an IRI)
-        self.assertEqual(po_maps[0][0], RDF_TYPE_IRI)
-        self.assertIsNone(po_maps[0][2])  # object_type should be None
-
-        # Check that predicate_object_maps are included
-        predicate_names = [item[0] for item in po_maps[1:]]
-        self.assertIn("name", predicate_names)
-        self.assertIn("email", predicate_names)
+        one = self.spark.range(1).select(
+            po_maps[0][0].alias("p0"),
+            po_maps[0][1].alias("o0"),
+            po_maps[1][0].alias("p1"),
+            po_maps[2][0].alias("p2"),
+        ).first()
+        self.assertEqual(one.p0, RDF_TYPE_IRI)
+        self.assertEqual(one.o0, "http://example.org/User")
+        self.assertIsNone(po_maps[0][2])
+        self.assertEqual(one.p1, "name")
+        self.assertEqual(one.p2, "email")
 
     def test_to_dp_method(self):
         """Test the to_dp method (basic functionality test)."""
