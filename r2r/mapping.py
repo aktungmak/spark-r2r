@@ -57,11 +57,12 @@ class Mapping:
     # An expression used to form the subject of the output triples.
     # It is recommended that this be an IRI string.
     subject_map: Column
-    # A dictionary of predicate IRI strings to object map values. Values can be:
+    # A list of (predicate, object map) pairs. Predicate is a string IRI or a Column
+    # (R2RML). Object values can be:
     # - Column: object expression, type inferred from source schema
     # - (Column, str): object expression with explicit type (XSD IRI or "@lang")
     # - (Column, None): object expression treated as IRI (no type)
-    predicate_object_maps: dict[str | Column, ObjectMapValue]
+    predicate_object_maps: list[tuple[Union[str, Column], ObjectMapValue]]
     # An optional IRI defining the rdf:type of the table being mapped.
     rdf_type: Optional[str] = None
     # Optionally filter the data in the table before the transformation.
@@ -76,7 +77,7 @@ class Mapping:
         if self.rdf_type:
             return [
                 (pred, RDFS_DOMAIN_IRI, self.rdf_type)
-                for pred in self.predicate_object_maps
+                for pred, _ in self.predicate_object_maps
             ]
         else:
             return []
@@ -91,7 +92,7 @@ class Mapping:
         """
         if self.rdf_type is not None:
             yield lit(RDF_TYPE_IRI), lit(self.rdf_type), None
-        for predicate, value in self.predicate_object_maps.items():
+        for predicate, value in self.predicate_object_maps:
             if isinstance(predicate, Column):
                 predicate_expr = predicate
             else:

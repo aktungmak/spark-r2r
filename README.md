@@ -17,11 +17,11 @@ m = Mapping(
         source="system.information_schema.catalogs",
         subject_map=iri.catalog("catalog_name"),
         rdf_type=iri.type("catalog"),
-        predicate_object_maps={
-            iri.pred("catalog_name"): col("catalog_name"),
-            iri.pred("catalog_owner_email"): col("catalog_owner"),
-        },
-    ),
+        predicate_object_maps=[
+            (iri.pred("catalog_name"), col("catalog_name")),
+            (iri.pred("catalog_owner_email"), col("catalog_owner")),
+        ],
+    )
 ```
 
 In this example, a separate module called `iri` is used to encapsulate

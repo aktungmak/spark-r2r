@@ -6,7 +6,7 @@ from rdflib import Graph, Namespace, RDF, URIRef
 
 R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
-from .mapping import Mapping
+from .mapping import Mapping, ObjectMapValue
 from .r2rml_template import r2rml_template_to_format_string
 
 
@@ -41,9 +41,8 @@ def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
 
         ### Step 4: Extract predicate object maps
 
-        # TODO this should be a list of tuples to support multiple maps with the same predicate
-        predicate_object_maps = {}
-        for predicate_object_map in g.subjects(RDF.type, R2RML.PredicateObjectMap):
+        predicate_object_maps: list[tuple[Column, ObjectMapValue]] = []
+        for predicate_object_map in g.objects(triple_map, R2RML.predicateObjectMap):
             predicate_expr = term_map_to_column(
                 g, predicate_object_map, R2RML.predicate, R2RML.predicateMap
             )
@@ -51,7 +50,7 @@ def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
                 g, predicate_object_map, R2RML.object, R2RML.objectMap
             )
 
-            predicate_object_maps[predicate_expr] = object_expr
+            predicate_object_maps.append((predicate_expr, object_expr))
 
         yield Mapping(
             source=source,

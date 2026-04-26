@@ -16,7 +16,7 @@ EXAMPLE_R2RML = """
 
 <#TripleMap>
   a rr:TriplesMap ;
-  rr:logicalTable [ rr:tableName "example_catalog.example_schema.products" ] ;
+  rr:logicalTable [ rr:tableName "test_products" ] ;
   rr:subjectMap [ rr:template "http://example.com/product/{ID}" ] ;
   rr:predicateObjectMap [
     rr:predicate ex:product_name ;
@@ -34,20 +34,24 @@ class TestR2RmlParser(TestCase):
             .config("spark.ui.enabled", "false")
             .getOrCreate()
         )
+        cls.spark.createDataFrame(
+            [(1, "Laptop")], "ID int, product_name string"
+        ).createOrReplaceTempView("test_products")
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls.spark.stop()
 
     def test_from_r2rml_returns_list_of_mappings(self) -> None:
-        """Parse example R2RML from a file; result materialized as a list of ``Mapping`` instances."""
+        """Parse example R2RML from a file; result materialised as a list of ``Mapping`` instances."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "mapping.ttl"
             path.write_text(EXAMPLE_R2RML, encoding="utf-8")
             mappings = list(from_r2rml(str(path), self.spark))
-            self.assertIsInstance(mappings, list)
-            for m in mappings:
-                self.assertIsInstance(m, Mapping)
+            self.assertEqual(len(mappings), 1)
+            m = mappings[0]
+            self.assertIsInstance(m, Mapping)
+            self.assertEqual(len(m.predicate_object_maps), 1)
 
 
 if __name__ == "__main__":

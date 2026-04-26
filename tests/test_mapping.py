@@ -79,7 +79,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         self.assertIsInstance(mapping.source, DataFrame)
@@ -93,7 +93,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")},
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("email", col("email")),
+            ],
             rdf_type="http://example.org/User",
             filter=col("role") != "guest",
             filter_null_obj=False,
@@ -110,7 +113,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source="test_users",
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         self.assertEqual(mapping.source, "test_users")
@@ -120,7 +123,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")},
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("email", col("email")),
+            ],
         )
 
         domain = mapping.rdfs_domain()
@@ -131,7 +137,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")},
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("email", col("email")),
+            ],
             rdf_type="http://example.org/User",
         )
 
@@ -147,7 +156,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")},
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("email", col("email")),
+            ],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -188,7 +200,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source="test_users",
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -207,7 +219,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
             rdf_type="http://example.org/User",
         )
 
@@ -229,7 +241,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
             filter=col("role") != "guest",
         )
 
@@ -248,7 +260,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"email": col("email")},
+            predicate_object_maps=[("email", col("email"))],
             filter_null_obj=False,
         )
 
@@ -268,7 +280,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
             metadata_columns={
                 "timestamp": lit("2024-01-01"),
                 "source_system": lit("test_system"),
@@ -301,13 +313,16 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.products_df,
             subject_map=col("product_id"),
-            predicate_object_maps={
-                "name": col("name"),
-                "category": col("category"),
-                "expensive": when(
-                    col("price").cast("double") > 100, lit("yes")
-                ).otherwise(lit("no")),
-            },
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("category", col("category")),
+                (
+                    "expensive",
+                    when(
+                        col("price").cast("double") > 100, lit("yes")
+                    ).otherwise(lit("no")),
+                ),
+            ],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -333,7 +348,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=empty_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -355,7 +370,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name"), "email": col("email")},
+            predicate_object_maps=[
+                ("name", col("name")),
+                ("email", col("email")),
+            ],
             rdf_type="http://example.org/User",
         )
 
@@ -380,7 +398,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         result = mapping.to_dp(self.spark, "test_table")
@@ -391,13 +409,13 @@ class TestMapping(TestCase):
         mapping1 = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         mapping2 = Mapping(
             source=self.products_df,
             subject_map=col("product_id"),
-            predicate_object_maps={"name": col("name")},
+            predicate_object_maps=[("name", col("name"))],
         )
 
         df1 = mapping1.to_df(self.spark)
@@ -421,11 +439,11 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={
-                "name": (col("name"), XSD_STRING),
+            predicate_object_maps=[
+                ("name", (col("name"), XSD_STRING)),
                 # Cast id to string to avoid union type mismatch, but specify integer type
-                "user_id": (col("id").cast("string"), XSD_INTEGER),
-            },
+                ("user_id", (col("id").cast("string"), XSD_INTEGER)),
+            ],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -443,9 +461,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={
-                "name": (col("name"), "@en"),
-            },
+            predicate_object_maps=[("name", (col("name"), "@en"))],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -459,9 +475,7 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={
-                "related": (col("email"), None),  # Treat as IRI
-            },
+            predicate_object_maps=[("related", (col("email"), None))],  # Treat as IRI
             rdf_type="http://example.org/User",
         )
 
@@ -487,10 +501,10 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={
-                "name": col("name"),  # StringType -> xsd:string
-                "role": col("role"),  # StringType -> xsd:string
-            },
+            predicate_object_maps=[
+                ("name", col("name")),  # StringType -> xsd:string
+                ("role", col("role")),  # StringType -> xsd:string
+            ],
         )
 
         result_df = mapping.to_df(self.spark)
@@ -510,12 +524,12 @@ class TestMapping(TestCase):
         mapping = Mapping(
             source=self.users_df,
             subject_map=col("id"),
-            predicate_object_maps={
-                "name": (col("name"), XSD_STRING),  # explicit typed literal
-                "label": (col("name"), "@en"),  # language tag
-                "sameAs": (col("email"), None),  # explicit IRI (no type)
-                "role": col("role"),  # inferred from schema (StringType -> xsd:string)
-            },
+            predicate_object_maps=[
+                ("name", (col("name"), XSD_STRING)),  # explicit typed literal
+                ("label", (col("name"), "@en")),  # language tag
+                ("sameAs", (col("email"), None)),  # explicit IRI (no type)
+                ("role", col("role")),  # inferred from schema (StringType -> xsd:string)
+            ],
         )
 
         result_df = mapping.to_df(self.spark)
