@@ -9,4 +9,5 @@ description = "A relational to RDF mapper for spark, supporting R2RML"
 requires-python = ">=3.8"
 dependencies = [
     "pyspark",
+    "rdflib",
 ]

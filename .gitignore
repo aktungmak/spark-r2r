@@ -7,3 +7,5 @@ dist/**
 *.py[cod]
 venv/
 .vscode/
+
+tests/rdb2rdf-test-cases/

@@ -4,10 +4,13 @@ from pyspark.sql import Column, SparkSession
 from pyspark.sql.functions import col, lit
 from rdflib import Graph, Namespace, RDF, URIRef
 
-R2RML = Namespace("http://www.w3.org/ns/r2rml#")
-
 from .mapping import Mapping, ObjectMapValue
-from .r2rml_template import r2rml_template_to_format_string
+from .r2rml_template import (
+    normalise_r2rml_sql_identifier,
+    r2rml_template_to_format_string,
+)
+
+R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
 
 def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
@@ -20,7 +23,8 @@ def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
 
         logical_table = g.value(triple_map, R2RML.logicalTable)
         if table_name := g.value(logical_table, R2RML.tableName):
-            source = spark.table(table_name)
+            tname = normalise_r2rml_sql_identifier(str(table_name))
+            source = spark.table(tname)
         elif sql_query := g.value(logical_table, R2RML.sqlQuery):
             source = spark.sql(sql_query)
         else:
@@ -69,7 +73,7 @@ def term_map_to_column(
     elif template := g.value(term_map, R2RML.template):
         return r2rml_template_to_format_string(str(template))
     elif column := g.value(term_map, R2RML.column):
-        return col(str(column))
+        return col(normalise_r2rml_sql_identifier(str(column)))
     elif constant := g.value(term_map, R2RML.constant):
         return lit(str(constant))
     else:
