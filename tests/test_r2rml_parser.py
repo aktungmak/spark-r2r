@@ -52,6 +52,17 @@ class TestR2RmlParser(TestCase):
             m = mappings[0]
             self.assertIsInstance(m, Mapping)
             self.assertEqual(len(m.predicate_object_maps), 1)
+            self.assertEqual(
+                m.to_df(self.spark).collect(),
+                [
+                    (
+                        "http://example.com/product/1",
+                        "http://example.com/ns#product_name",
+                        "Laptop",
+                        "http://www.w3.org/2001/XMLSchema#string",
+                    )
+                ],
+            )
 
 
 if __name__ == "__main__":

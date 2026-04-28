@@ -9,3 +9,4 @@ venv/
 .vscode/
 
 tests/rdb2rdf-test-cases/
+spark-warehouse/

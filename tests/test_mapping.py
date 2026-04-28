@@ -318,9 +318,9 @@ class TestMapping(TestCase):
                 ("category", col("category")),
                 (
                     "expensive",
-                    when(
-                        col("price").cast("double") > 100, lit("yes")
-                    ).otherwise(lit("no")),
+                    when(col("price").cast("double") > 100, lit("yes")).otherwise(
+                        lit("no")
+                    ),
                 ),
             ],
         )
@@ -380,12 +380,16 @@ class TestMapping(TestCase):
         po_maps = list(mapping._po_maps())
         self.assertEqual(len(po_maps), 3)
 
-        one = self.spark.range(1).select(
-            po_maps[0][0].alias("p0"),
-            po_maps[0][1].alias("o0"),
-            po_maps[1][0].alias("p1"),
-            po_maps[2][0].alias("p2"),
-        ).first()
+        one = (
+            self.spark.range(1)
+            .select(
+                po_maps[0][0].alias("p0"),
+                po_maps[0][1].alias("o0"),
+                po_maps[1][0].alias("p1"),
+                po_maps[2][0].alias("p2"),
+            )
+            .first()
+        )
         self.assertEqual(one.p0, RDF_TYPE_IRI)
         self.assertEqual(one.o0, "http://example.org/User")
         self.assertIsNone(po_maps[0][2])
@@ -528,7 +532,10 @@ class TestMapping(TestCase):
                 ("name", (col("name"), XSD_STRING)),  # explicit typed literal
                 ("label", (col("name"), "@en")),  # language tag
                 ("sameAs", (col("email"), None)),  # explicit IRI (no type)
-                ("role", col("role")),  # inferred from schema (StringType -> xsd:string)
+                (
+                    "role",
+                    col("role"),
+                ),  # inferred from schema (StringType -> xsd:string)
             ],
         )
 
