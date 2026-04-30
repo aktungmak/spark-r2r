@@ -77,12 +77,12 @@ class TestMapping(TestCase):
     def test_basic_initialization(self):
         """Test basic initialization of Mapping class."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
 
-        self.assertIsInstance(mapping.source, DataFrame)
+        self.assertIsInstance(mapping.source_df, DataFrame)
         self.assertEqual(mapping.rdf_type, None)
         self.assertEqual(mapping.filter, None)
         self.assertTrue(mapping.filter_null_obj)
@@ -91,7 +91,7 @@ class TestMapping(TestCase):
     def test_initialization_with_all_parameters(self):
         """Test initialization with all optional parameters."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -111,17 +111,28 @@ class TestMapping(TestCase):
     def test_string_source_initialization(self):
         """Test initialization with string table name as source."""
         mapping = Mapping(
-            source="test_users",
+            source_table="test_users",
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
 
-        self.assertEqual(mapping.source, "test_users")
+        self.assertEqual(mapping.source_table, "test_users")
+
+    def test_mapping_raises_when_no_source_provided(self):
+        """__post_init__ rejects mappings with no table, query, or DataFrame source."""
+        with self.assertRaisesRegex(
+            ValueError,
+            "Exactly one of source_table, source_query, or source_df must be provided",
+        ):
+            Mapping(
+                subject_map=col("id"),
+                predicate_object_maps=[("name", col("name"))],
+            )
 
     def test_rdfs_domain_without_rdf_type(self):
         """Test rdfs_domain method when rdf_type is None."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -135,7 +146,7 @@ class TestMapping(TestCase):
     def test_rdfs_domain_with_rdf_type(self):
         """Test rdfs_domain method when rdf_type is provided."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -154,7 +165,7 @@ class TestMapping(TestCase):
     def test_to_df_basic_functionality(self):
         """Test basic to_df functionality with DataFrame source."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -198,7 +209,7 @@ class TestMapping(TestCase):
     def test_to_df_with_string_source(self):
         """Test to_df functionality with string table name as source."""
         mapping = Mapping(
-            source="test_users",
+            source_table="test_users",
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
@@ -214,10 +225,28 @@ class TestMapping(TestCase):
         self.assertIn("John Doe", objects)
         self.assertIn("Jane Smith", objects)
 
+    def test_to_df_with_source_query(self):
+        """Test to_df loads rows via spark.sql when source_query is provided."""
+        mapping = Mapping(
+            source_query="SELECT * FROM test_users WHERE role = 'admin'",
+            subject_map=col("id"),
+            predicate_object_maps=[("name", col("name"))],
+        )
+
+        result_df = mapping.to_df(self.spark)
+        self.assertEqual(result_df.count(), 1)
+
+        result_data = result_df.collect()
+        objects = [row[OBJECT_COLUMN] for row in result_data]
+        self.assertIn("John Doe", objects)
+        self.assertNotIn("Jane Smith", objects)
+        self.assertNotIn("Bob Wilson", objects)
+        self.assertNotIn("Anonymous User", objects)
+
     def test_to_df_with_rdf_type(self):
         """Test to_df functionality with rdf_type specified."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
             rdf_type="http://example.org/User",
@@ -239,7 +268,7 @@ class TestMapping(TestCase):
     def test_to_df_with_filter(self):
         """Test to_df functionality with filter applied."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
             filter=col("role") != "guest",
@@ -258,7 +287,7 @@ class TestMapping(TestCase):
     def test_to_df_with_filter_null_obj_false(self):
         """Test to_df functionality with filter_null_obj=False."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("email", col("email"))],
             filter_null_obj=False,
@@ -278,7 +307,7 @@ class TestMapping(TestCase):
     def test_to_df_with_metadata_columns(self):
         """Test to_df functionality with metadata columns."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
             metadata_columns={
@@ -311,7 +340,7 @@ class TestMapping(TestCase):
     def test_to_df_complex_expressions(self):
         """Test to_df with complex column expressions."""
         mapping = Mapping(
-            source=self.products_df,
+            source_df=self.products_df,
             subject_map=col("product_id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -346,7 +375,7 @@ class TestMapping(TestCase):
         empty_df = self.spark.createDataFrame([], self.users_schema)
 
         mapping = Mapping(
-            source=empty_df,
+            source_df=empty_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
@@ -368,7 +397,7 @@ class TestMapping(TestCase):
     def test_po_maps_private_method(self):
         """Test the _po_maps private method."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),
@@ -400,7 +429,7 @@ class TestMapping(TestCase):
         """Test the to_dp method (basic functionality test)."""
         self.skipTest("Declarative Pipelines not available in test environment")
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
@@ -411,13 +440,13 @@ class TestMapping(TestCase):
     def test_multiple_mappings_union(self):
         """Test creating multiple mappings and ensuring they can be unioned."""
         mapping1 = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
 
         mapping2 = Mapping(
-            source=self.products_df,
+            source_df=self.products_df,
             subject_map=col("product_id"),
             predicate_object_maps=[("name", col("name"))],
         )
@@ -441,7 +470,7 @@ class TestMapping(TestCase):
         XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer"
 
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", (col("name"), XSD_STRING)),
@@ -463,7 +492,7 @@ class TestMapping(TestCase):
     def test_object_type_with_language_tags(self):
         """Test that language-tagged literals use @lang format."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", (col("name"), "@en"))],
         )
@@ -477,7 +506,7 @@ class TestMapping(TestCase):
     def test_object_type_none_for_iris(self):
         """Test that IRIs (including rdf:type objects) have None as object type."""
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("related", (col("email"), None))],  # Treat as IRI
             rdf_type="http://example.org/User",
@@ -503,7 +532,7 @@ class TestMapping(TestCase):
         XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", col("name")),  # StringType -> xsd:string
@@ -526,7 +555,7 @@ class TestMapping(TestCase):
         XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
         mapping = Mapping(
-            source=self.users_df,
+            source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
                 ("name", (col("name"), XSD_STRING)),  # explicit typed literal

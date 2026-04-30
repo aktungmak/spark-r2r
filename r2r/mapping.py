@@ -51,19 +51,16 @@ class Mapping:
     using subject-predicate-object triples.
     """
 
-    # The source, either as a DataFrame object or the name of a table
-    # in the spark catalog.
-    source: Union[str, DataFrame]
     # An expression used to form the subject of the output triples.
-    # It is recommended that this be an IRI string.
+    # It is recommended that this be an IRI.
     subject_map: Column
-    # A list of (predicate, object map) pairs. Predicate is a string IRI or a Column
-    # (R2RML). Object values can be:
+    # A list of (predicate, object map) pairs. Predicate is a string IRI or a Column.
+    # Object values can be:
     # - Column: object expression, type inferred from source schema
     # - (Column, str): object expression with explicit type (XSD IRI or "@lang")
     # - (Column, None): object expression treated as IRI (no type)
     predicate_object_maps: list[tuple[Union[str, Column], ObjectMapValue]]
-    # An optional IRI defining the rdf:type of the table being mapped.
+    # An optional IRI defining the rdf:type of the subject of the mapping.
     rdf_type: Optional[str] = None
     # Optionally filter the data in the table before the transformation.
     filter: Optional[Column] = None
@@ -72,6 +69,19 @@ class Mapping:
     # Additional columns to be added alongside the subject, predicate and
     # object columns. A common example is to add a timestamp to the triple.
     metadata_columns: dict[str | Column, Column] = field(default_factory=dict)
+    # The source of the mapping, either a table name, a query, or a DataFrame.
+    # Exactly one of source_table, source_query, or source_df must be provided.
+    source_table: Optional[str] = None
+    source_query: Optional[str] = None
+    source_df: Optional[DataFrame] = None
+
+    def __post_init__(self):
+        if all(
+            s is None for s in [self.source_table, self.source_query, self.source_df]
+        ):
+            raise ValueError(
+                "Exactly one of source_table, source_query, or source_df must be provided"
+            )
 
     def rdfs_domain(self) -> list[tuple]:
         if self.rdf_type:
@@ -108,10 +118,14 @@ class Mapping:
         Build a DataFrame of triples based on the mapping.
         Output columns: s, p, o, ot (plus any metadata_columns).
         """
-        if isinstance(self.source, str):
-            source = spark.table(self.source)
+        if self.source_table:
+            source = spark.table(self.source_table)
+        elif self.source_query:
+            source = spark.sql(self.source_query)
+        elif self.source_df:
+            source = self.source_df
         else:
-            source = self.source
+            assert False, "Unreachable"
         metadata_columns = [
             mc.alias(name) for name, mc in self.metadata_columns.items()
         ]

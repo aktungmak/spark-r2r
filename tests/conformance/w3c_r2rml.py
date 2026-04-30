@@ -14,7 +14,7 @@ from typing import cast
 
 from pyspark.sql import DataFrame, SparkSession
 
-from r2r import from_r2rml
+from r2r import R2RMLParseError, from_r2rml
 
 from tests.conformance import cmp, sql_exec
 from tests.conformance.manifest import (
@@ -41,11 +41,11 @@ def _method_name(w3c_id: str) -> str:
     return f"test_{s}"
 
 
-def _run_positive_r2rml_to_graph(sp: SparkSession, r2rml_path: str) -> Graph:
+def _run_positive_r2rml_to_graph(r2rml_path: str) -> Graph:
     return cmp.data_frame_to_graph(
         reduce(
             lambda a, b: a.union(b),
-            [m.to_df(sp) for _, m in from_r2rml(r2rml_path, sp)],
+            [m.to_df(sp) for _, m in from_r2rml(r2rml_path)],
         )
     )
 
@@ -58,25 +58,25 @@ def _body(self: "W3CConformanceTest", tc: R2RMLTestCase) -> None:
     map_path = (base / tc.mapping_file).resolve()
     self.assertTrue(sql_path.is_file(), f"missing SQL: {sql_path}")
     self.assertTrue(map_path.is_file(), f"missing mapping: {map_path}")
-    sql_exec.drop_test_database(sp, db)
+    sql_exec.drop_test_database(self.spark, db)
     if not tc.has_expected_output:
         had_sql = False
         try:
-            sql_exec.run_sql_file(sp, sql_path, db)
+            sql_exec.run_sql_file(self.spark, sql_path, db)
             had_sql = True
         except Exception:  # noqa: BLE001
             had_sql = False
         if had_sql:
-            sp.sql(f"USE {db}")
-        with self.assertRaises(Exception):
-            _run_positive_r2rml_to_graph(sp, str(map_path))
+            self.spark.sql(f"USE {db}")
+        with self.assertRaises(R2RMLParseError):
+            _run_positive_r2rml_to_graph(str(map_path))
         return
     try:
         sql_exec.run_sql_file(sp, sql_path, db)
     except Exception as exc:  # noqa: BLE001
         self.fail(f"SQL setup failed for {tc.w3c_id}: {exc!s}")
     sp.sql(f"USE {db}")
-    g_actual = _run_positive_r2rml_to_graph(sp, str(map_path))
+    g_actual = _run_positive_r2rml_to_graph(str(map_path))
     if not tc.output_file:
         self.fail(
             f"{tc.w3c_id} has hasExpectedOutput true but no rdb2rdftest:output in manifest"

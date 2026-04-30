@@ -47,7 +47,7 @@ class TestR2RmlParser(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "mapping.ttl"
             path.write_text(EXAMPLE_R2RML, encoding="utf-8")
-            mappings = list(from_r2rml(str(path), self.spark))
+            mappings = list(from_r2rml(str(path)))
             self.assertEqual(len(mappings), 1)
             name, m = mappings[0]
             self.assertTrue(name.endswith("#TripleMap"))

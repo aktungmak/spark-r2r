@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from pyspark.sql import Column, SparkSession
+from pyspark.sql import Column
 from pyspark.sql.functions import col, lit
 from rdflib import Graph, Namespace, RDF, URIRef
 
@@ -13,22 +13,21 @@ from .r2rml_template import (
 R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
 
-def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[tuple[str, Mapping]]:
+def from_r2rml(r2rml_file: str) -> Iterator[tuple[str, Mapping]]:
     """Parse an R2RML file and yield mappings."""
     g = Graph()
     g.parse(r2rml_file, format="turtle")
     for triple_map in g.subjects(RDF.type, R2RML.TriplesMap):
 
         ### Step 1: Extract source
-
+        source_table = source_query = None
         logical_table = g.value(triple_map, R2RML.logicalTable)
         if table_name := g.value(logical_table, R2RML.tableName):
-            tname = normalise_r2rml_sql_identifier(str(table_name))
-            source = spark.table(tname)
+            source_table = normalise_r2rml_sql_identifier(str(table_name))
         elif sql_query := g.value(logical_table, R2RML.sqlQuery):
-            source = spark.sql(sql_query)
+            source_query = str(sql_query)
         else:
-            raise ValueError("Logical table not provided in {triple_map}")
+            raise R2RMLParseError(f"Logical table not provided in {triple_map}")
 
         ### Step 2: Extract subject
 
@@ -57,7 +56,8 @@ def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[tuple[str, Mapp
             predicate_object_maps.append((predicate_expr, object_expr))
 
         yield str(triple_map), Mapping(
-            source=source,
+            source_table=source_table,
+            source_query=source_query,
             subject_map=subject_map_expr,
             predicate_object_maps=predicate_object_maps,
             rdf_type=str(subject_class) if subject_class is not None else None,
@@ -77,4 +77,8 @@ def term_map_to_column(
     elif constant := g.value(term_map, R2RML.constant):
         return lit(str(constant))
     else:
-        raise ValueError(f"Term map not supplied in {triple_map}")
+        raise R2RMLParseError(f"Term map not supplied in {triple_map}")
+
+
+class R2RMLParseError(Exception):
+    pass
