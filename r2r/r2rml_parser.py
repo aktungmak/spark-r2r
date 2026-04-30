@@ -13,7 +13,7 @@ from .r2rml_template import (
 R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
 
-def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
+def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[tuple[str, Mapping]]:
     """Parse an R2RML file and yield mappings."""
     g = Graph()
     g.parse(r2rml_file, format="turtle")
@@ -56,7 +56,7 @@ def from_r2rml(r2rml_file: str, spark: SparkSession) -> Iterator[Mapping]:
 
             predicate_object_maps.append((predicate_expr, object_expr))
 
-        yield Mapping(
+        yield str(triple_map), Mapping(
             source=source,
             subject_map=subject_map_expr,
             predicate_object_maps=predicate_object_maps,

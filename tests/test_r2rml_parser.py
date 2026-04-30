@@ -42,15 +42,15 @@ class TestR2RmlParser(TestCase):
     def tearDownClass(cls) -> None:
         cls.spark.stop()
 
-    def test_from_r2rml_returns_list_of_mappings(self) -> None:
+    def test_simple_usage(self) -> None:
         """Parse example R2RML from a file; result materialised as a list of ``Mapping`` instances."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "mapping.ttl"
             path.write_text(EXAMPLE_R2RML, encoding="utf-8")
             mappings = list(from_r2rml(str(path), self.spark))
             self.assertEqual(len(mappings), 1)
-            m = mappings[0]
-            self.assertIsInstance(m, Mapping)
+            name, m = mappings[0]
+            self.assertTrue(name.endswith("#TripleMap"))
             self.assertEqual(len(m.predicate_object_maps), 1)
             self.assertEqual(
                 m.to_df(self.spark).collect(),

@@ -13,7 +13,6 @@ from functools import reduce
 from typing import cast
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
 
 from r2r import from_r2rml
 
@@ -43,15 +42,12 @@ def _method_name(w3c_id: str) -> str:
 
 
 def _run_positive_r2rml_to_graph(sp: SparkSession, r2rml_path: str) -> Graph:
-    mlist = list(from_r2rml(r2rml_path, sp))
-    if not mlist:
-        return Graph()
-    dfs: list[DataFrame] = [m.to_df(sp) for m in mlist]
-    acc: DataFrame = reduce(lambda a, b: a.union(b), dfs)
-    for c in ("s", "p", "o", "ot"):
-        if c not in acc.columns:
-            acc = acc.withColumn(c, F.lit(None).cast("string"))
-    return cmp.data_frame_to_graph(acc)
+    return cmp.data_frame_to_graph(
+        reduce(
+            lambda a, b: a.union(b),
+            [m.to_df(sp) for _, m in from_r2rml(r2rml_path, sp)],
+        )
+    )
 
 
 def _body(self: "W3CConformanceTest", tc: R2RMLTestCase) -> None:
