@@ -4,7 +4,7 @@ from pyspark.sql import Column
 from pyspark.sql.functions import col, lit
 from rdflib import Graph, Namespace, RDF, URIRef
 
-from .mapping import Mapping, ObjectMapValue
+from .mapping import TripleMap, RefObjectMap
 from .r2rml_template import (
     normalise_r2rml_sql_identifier,
     r2rml_template_to_format_string,
@@ -13,10 +13,12 @@ from .r2rml_template import (
 R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
 
-def from_r2rml(r2rml_file: str) -> Iterator[tuple[str, Mapping]]:
+def from_r2rml(r2rml_file: str) -> Iterator[tuple[str, TripleMap]]:
     """Parse an R2RML file and yield mappings."""
     g = Graph()
     g.parse(r2rml_file, format="turtle")
+
+    mappings = {}
     for triple_map in g.subjects(RDF.type, R2RML.TriplesMap):
 
         ### Step 1: Extract source
@@ -46,22 +48,42 @@ def from_r2rml(r2rml_file: str) -> Iterator[tuple[str, Mapping]]:
 
         predicate_object_maps: list[tuple[Column, ObjectMapValue]] = []
         for predicate_object_map in g.objects(triple_map, R2RML.predicateObjectMap):
-            predicate_expr = term_map_to_column(
+            predicate = term_map_to_column(
                 g, predicate_object_map, R2RML.predicate, R2RML.predicateMap
             )
-            object_expr = term_map_to_column(
-                g, predicate_object_map, R2RML.object, R2RML.objectMap
-            )
 
-            predicate_object_maps.append((predicate_expr, object_expr))
+            # first, detect if this is a RefObjectMap
+            # we know its a RefObjectMap if there is an objectMap with an
+            # rr:parentTriplesMap reference
+            if (object_map := g.value(predicate_object_map, R2RML.objectMap)) and (
+                parent_triples_map := g.value(object_map, R2RML.parentTriplesMap)
+            ):
+                # its a RefObjectMap
+                parent_mapping = str(parent_triples_map)
+                join_conditions = [
+                    (g.value(jc, R2RML.child), g.value(jc, R2RML.parent))
+                    for jc in g.objects(predicate_object_map, R2RML.joinCondition)
+                ]
+                object_expr = RefObjectMap(
+                    parent_mapping=parent_mapping, join_conditions=join_conditions
+                )
+            else:
+                # its a regular TermMap
+                object_expr = term_map_to_column(
+                    g, predicate_object_map, R2RML.object, R2RML.objectMap
+                )
 
-        yield str(triple_map), Mapping(
+            predicate_object_maps.append((predicate, object_expr))
+
+        mappings[triple_map] = TripleMap(
             source_table=source_table,
             source_query=source_query,
             subject_map=subject_map_expr,
             predicate_object_maps=predicate_object_maps,
             rdf_type=str(subject_class) if subject_class is not None else None,
         )
+
+    return mappings
 
 
 def term_map_to_column(

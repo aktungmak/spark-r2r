@@ -4,7 +4,7 @@ from pyspark.sql.functions import col, when, explode
 from pyspark import pipelines as dp
 
 import iri
-from r2r import Mapping
+from r2r import TripleMap
 
 USERS_TABLE = "example_catalog.example_schema.users"
 PIPELINES_TABLE = "example_catalog.example_schema.pipelines"
@@ -12,7 +12,7 @@ QUERY_TO_TABLE_TABLE = "example_catalog.example_schema.query_to_table"
 TABLE_TO_PIPELINE_TABLE = "example_catalog.example_schema.table_to_pipeline"
 
 mappings = [
-    Mapping(
+    TripleMap(
         source="system.information_schema.catalogs",
         subject_map=iri.catalog("catalog_name"),
         rdf_type=iri.type("catalog"),
@@ -21,7 +21,7 @@ mappings = [
             (iri.pred("catalog_owner_email"), col("catalog_owner")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.information_schema.schemata",
         subject_map=iri.schema("catalog_name", "schema_name"),
         rdf_type=iri.type("schema"),
@@ -31,7 +31,7 @@ mappings = [
             (iri.pred("in_catalog"), iri.catalog("catalog_name")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.information_schema.tables",
         subject_map=iri.table("table_catalog", "table_schema", "table_name"),
         rdf_type=iri.type("table"),
@@ -42,7 +42,7 @@ mappings = [
             (iri.pred("in_schema"), iri.schema("table_catalog", "table_schema")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.information_schema.columns",
         subject_map=iri.column(
             "table_catalog", "table_schema", "table_name", "column_name"
@@ -57,7 +57,7 @@ mappings = [
             ),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.information_schema.volumes",
         subject_map=iri.volume("volume_catalog", "volume_schema", "volume_name"),
         rdf_type=iri.type("volume"),
@@ -67,7 +67,7 @@ mappings = [
             (iri.pred("in_schema"), iri.schema("volume_catalog", "volume_schema")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.query.history",
         subject_map=iri.query("workspace_id", "statement_id"),
         rdf_type=iri.type("query"),
@@ -87,7 +87,7 @@ mappings = [
             ),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.compute.warehouses",
         subject_map=iri.warehouse("workspace_id", "warehouse_id"),
         rdf_type=iri.type("warehouse"),
@@ -97,7 +97,7 @@ mappings = [
             (iri.pred("workspace_id"), iri.workspace("workspace_id")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source="system.compute.clusters",
         subject_map=iri.cluster("workspace_id", "cluster_id"),
         rdf_type=iri.type("cluster"),
@@ -109,7 +109,7 @@ mappings = [
             (iri.pred("workspace_id"), iri.workspace("workspace_id")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source=USERS_TABLE,
         subject_map=iri.user("id"),
         rdf_type=iri.type("user"),
@@ -118,7 +118,7 @@ mappings = [
             (iri.pred("user_email"), explode("emails")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source=PIPELINES_TABLE,
         subject_map=iri.pipeline("workspace_id", "id"),
         rdf_type=iri.type("pipeline"),
@@ -130,7 +130,7 @@ mappings = [
             (iri.pred("workspace_id"), iri.workspace("workspace_id")),
         ],
     ),
-    Mapping(
+    TripleMap(
         source=QUERY_TO_TABLE_TABLE,
         subject_map=iri.query("workspace_id", "query_id"),
         predicate_object_maps=[
@@ -140,7 +140,7 @@ mappings = [
             )
         ],
     ),
-    Mapping(
+    TripleMap(
         source=TABLE_TO_PIPELINE_TABLE,
         subject_map=iri.table("catalog_name", "schema_name", "table_name"),
         predicate_object_maps=[

@@ -7,7 +7,7 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, lit, when
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
-from r2r import Mapping
+from r2r import TripleMap
 from r2r.mapping import (
     SUBJECT_COLUMN,
     PREDICATE_COLUMN,
@@ -18,8 +18,8 @@ from r2r.mapping import (
 )
 
 
-class TestMapping(TestCase):
-    """Comprehensive unit tests for the r2r.Mapping class."""
+class TestTripleMap(TestCase):
+    """Comprehensive unit tests for the r2r.TripleMap class."""
 
     @classmethod
     def setUpClass(cls):
@@ -75,8 +75,8 @@ class TestMapping(TestCase):
         self.products_df.createOrReplaceTempView("test_products")
 
     def test_basic_initialization(self):
-        """Test basic initialization of Mapping class."""
-        mapping = Mapping(
+        """Test basic initialization of TripleMap class."""
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -90,7 +90,7 @@ class TestMapping(TestCase):
 
     def test_initialization_with_all_parameters(self):
         """Test initialization with all optional parameters."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -110,7 +110,7 @@ class TestMapping(TestCase):
 
     def test_string_source_initialization(self):
         """Test initialization with string table name as source."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_table="test_users",
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -124,14 +124,14 @@ class TestMapping(TestCase):
             ValueError,
             "Exactly one of source_table, source_query, or source_df must be provided",
         ):
-            Mapping(
+            TripleMap(
                 subject_map=col("id"),
                 predicate_object_maps=[("name", col("name"))],
             )
 
     def test_rdfs_domain_without_rdf_type(self):
         """Test rdfs_domain method when rdf_type is None."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -145,7 +145,7 @@ class TestMapping(TestCase):
 
     def test_rdfs_domain_with_rdf_type(self):
         """Test rdfs_domain method when rdf_type is provided."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -164,7 +164,7 @@ class TestMapping(TestCase):
 
     def test_to_df_basic_functionality(self):
         """Test basic to_df functionality with DataFrame source."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -208,7 +208,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_string_source(self):
         """Test to_df functionality with string table name as source."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_table="test_users",
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -227,7 +227,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_source_query(self):
         """Test to_df loads rows via spark.sql when source_query is provided."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_query="SELECT * FROM test_users WHERE role = 'admin'",
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -245,7 +245,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_rdf_type(self):
         """Test to_df functionality with rdf_type specified."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -267,7 +267,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_filter(self):
         """Test to_df functionality with filter applied."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -286,7 +286,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_filter_null_obj_false(self):
         """Test to_df functionality with filter_null_obj=False."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("email", col("email"))],
@@ -306,7 +306,7 @@ class TestMapping(TestCase):
 
     def test_to_df_with_metadata_columns(self):
         """Test to_df functionality with metadata columns."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -339,7 +339,7 @@ class TestMapping(TestCase):
 
     def test_to_df_complex_expressions(self):
         """Test to_df with complex column expressions."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.products_df,
             subject_map=col("product_id"),
             predicate_object_maps=[
@@ -374,7 +374,7 @@ class TestMapping(TestCase):
         """Test to_df with empty DataFrame."""
         empty_df = self.spark.createDataFrame([], self.users_schema)
 
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=empty_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -396,7 +396,7 @@ class TestMapping(TestCase):
 
     def test_po_maps_private_method(self):
         """Test the _po_maps private method."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -428,7 +428,7 @@ class TestMapping(TestCase):
     def test_to_dp_method(self):
         """Test the to_dp method (basic functionality test)."""
         self.skipTest("Declarative Pipelines not available in test environment")
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
@@ -439,13 +439,13 @@ class TestMapping(TestCase):
 
     def test_multiple_mappings_union(self):
         """Test creating multiple mappings and ensuring they can be unioned."""
-        mapping1 = Mapping(
+        mapping1 = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", col("name"))],
         )
 
-        mapping2 = Mapping(
+        mapping2 = TripleMap(
             source_df=self.products_df,
             subject_map=col("product_id"),
             predicate_object_maps=[("name", col("name"))],
@@ -469,7 +469,7 @@ class TestMapping(TestCase):
         XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
         XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer"
 
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -491,7 +491,7 @@ class TestMapping(TestCase):
 
     def test_object_type_with_language_tags(self):
         """Test that language-tagged literals use @lang format."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("name", (col("name"), "@en"))],
@@ -505,7 +505,7 @@ class TestMapping(TestCase):
 
     def test_object_type_none_for_iris(self):
         """Test that IRIs (including rdf:type objects) have None as object type."""
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[("related", (col("email"), None))],  # Treat as IRI
@@ -531,7 +531,7 @@ class TestMapping(TestCase):
         """Test that plain Column values infer object type from source schema."""
         XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[
@@ -554,7 +554,7 @@ class TestMapping(TestCase):
         """Test mixing explicit types, language tags, IRIs, and inferred types."""
         XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
-        mapping = Mapping(
+        mapping = TripleMap(
             source_df=self.users_df,
             subject_map=col("id"),
             predicate_object_maps=[

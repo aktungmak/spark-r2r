@@ -22,12 +22,16 @@ from r2r.mapping import (
 
 def _align_xsd_string_literals(g: Graph) -> Graph:
     """
-    W3C gold files often use plain string literals; ``Mapping`` emits ``xsd:string``.
+    W3C gold files often use plain string literals; `TripleMap` emits `xsd:string`.
     Strip ``xsd:string`` so ``rdflib.compare.isomorphic`` is meaningful.
     """
     h = Graph()
     for s, p, o in g:
-        if isinstance(o, Literal) and o.datatype is not None and o.datatype == XSD.string:
+        if (
+            isinstance(o, Literal)
+            and o.datatype is not None
+            and o.datatype == XSD.string
+        ):
             o = Literal(str(o))
         h.add((s, p, o))
     return h
@@ -37,9 +41,7 @@ def load_expected_graph(path: Path) -> Graph:
     """Load N-Quads, N-Triples, or Turtle from a W3C expected-output file."""
     text = path.read_text(encoding="utf-8", errors="replace")
     non_comment = "\n".join(
-        ln
-        for ln in text.splitlines()
-        if not re.match(r"^\s*#", ln) and ln.strip()
+        ln for ln in text.splitlines() if not re.match(r"^\s*#", ln) and ln.strip()
     )
     if not non_comment.strip():
         return Graph()
@@ -76,7 +78,7 @@ def _object_term(oval, otype: Optional[str]) -> Union[URIRef, Literal]:
 
 
 def data_frame_to_graph(df: DataFrame) -> Graph:
-    """Build an rdflib graph from a ``Mapping.to_df`` result (s, p, o, ot)."""
+    """Build an rdflib graph from a `TripleMap.to_df` result (s, p, o, ot)."""
     g = Graph()
     for row in df.collect():
         d = row.asDict()
@@ -106,9 +108,7 @@ def _triple_n3_set(g: Graph) -> set[tuple[str, str, str]]:
     return {(a.n3(), b.n3(), c.n3()) for a, b, c in g}
 
 
-def compare_graphs(
-    expected: Graph, actual: Graph
-) -> Tuple[bool, str]:
+def compare_graphs(expected: Graph, actual: Graph) -> Tuple[bool, str]:
     """``rdflib`` isomorphism after aligning string literals; fallback n3-set diff for errors."""
     e = _align_xsd_string_literals(expected)
     a = _align_xsd_string_literals(actual)

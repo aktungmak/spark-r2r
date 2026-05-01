@@ -5,7 +5,7 @@ from unittest import TestCase
 
 from pyspark.sql import SparkSession
 
-from r2r import Mapping
+from r2r import TripleMap
 from r2r.r2rml_parser import from_r2rml
 
 # Minimal R2RML in Turtle: one triples map with logical table, subject map, and one predicate–object map.
@@ -43,7 +43,7 @@ class TestR2RmlParser(TestCase):
         cls.spark.stop()
 
     def test_simple_usage(self) -> None:
-        """Parse example R2RML from a file; result materialised as a list of ``Mapping`` instances."""
+        """Parse example R2RML from a file; result materialised as a list of `TripleMap` instances."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "mapping.ttl"
             path.write_text(EXAMPLE_R2RML, encoding="utf-8")
