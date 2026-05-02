@@ -1,24 +1,34 @@
-import warnings
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import Iterator, Optional, Union
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.column import Column
-from pyspark.sql.functions import lit
-import pyspark.sql.types as spark_types
+from pyspark.sql import Column, DataFrame, SparkSession
+from pyspark.sql.functions import col, lit
+from pyspark.sql.types import StructType, StructField, StringType
+from rdflib import Graph, Namespace, RDF, RDFS, URIRef, XSD
+
+from .r2rml_template import (
+    normalise_r2rml_sql_identifier,
+    r2rml_template_to_format_string,
+)
 
 SUBJECT_COLUMN = "s"
 PREDICATE_COLUMN = "p"
 OBJECT_COLUMN = "o"
 OBJECT_TYPE_COLUMN = "ot"
-RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-RDFS_DOMAIN_IRI = "http://www.w3.org/2000/01/rdf-schema#domain"
+RDF_TYPE_IRI = str(RDF.type)
+RDFS_DOMAIN_IRI = str(RDFS.domain)
+TRIPLE_SCHEMA = StructType(
+    [
+        StructField(SUBJECT_COLUMN, StringType(), nullable=False),
+        StructField(PREDICATE_COLUMN, StringType(), nullable=False),
+        StructField(OBJECT_COLUMN, StringType(), nullable=False),
+        StructField(OBJECT_TYPE_COLUMN, StringType(), nullable=True),
+    ]
+)
 
-XSD_PREFIX = "http://www.w3.org/2001/XMLSchema#"
-
-# Sentinel to indicate object type should be inferred from schema
-_INFER = object()
+R2RML = Namespace("http://www.w3.org/ns/r2rml#")
 
 
 @dataclass
@@ -42,25 +52,26 @@ PredicateMap = Union[str, Column]
 # Alternatively, it can be a RefObjectMap
 ObjectMap = Union[Column, tuple[Column, Optional[str]], RefObjectMap]
 
+PredicateObjectMap = tuple[PredicateMap, ObjectMap]
 
 _SPARK_TYPE_TO_XSD = {
-    spark_types.StringType: f"{XSD_PREFIX}string",
-    spark_types.IntegerType: f"{XSD_PREFIX}integer",
-    spark_types.LongType: f"{XSD_PREFIX}long",
-    spark_types.ShortType: f"{XSD_PREFIX}short",
-    spark_types.ByteType: f"{XSD_PREFIX}byte",
-    spark_types.FloatType: f"{XSD_PREFIX}float",
-    spark_types.DoubleType: f"{XSD_PREFIX}double",
-    spark_types.BooleanType: f"{XSD_PREFIX}boolean",
-    spark_types.DateType: f"{XSD_PREFIX}date",
-    spark_types.TimestampType: f"{XSD_PREFIX}dateTime",
-    spark_types.DecimalType: f"{XSD_PREFIX}decimal",
+    spark_types.StringType: str(XSD.string),
+    spark_types.IntegerType: str(XSD.integer),
+    spark_types.LongType: str(XSD.long),
+    spark_types.ShortType: str(XSD.short),
+    spark_types.ByteType: str(XSD.byte),
+    spark_types.FloatType: str(XSD.float),
+    spark_types.DoubleType: str(XSD.double),
+    spark_types.BooleanType: str(XSD.boolean),
+    spark_types.DateType: str(XSD.date),
+    spark_types.TimestampType: str(XSD.dateTime),
+    spark_types.DecimalType: str(XSD.decimal),
 }
 
 
 def _spark_type_to_xsd(spark_type) -> str:
     """Map a Spark DataType to its corresponding XSD URI, defaulting to string."""
-    return _SPARK_TYPE_TO_XSD.get(type(spark_type), f"{XSD_PREFIX}string")
+    return _SPARK_TYPE_TO_XSD.get(type(spark_type), str(XSD.string))
 
 
 @dataclass
@@ -82,9 +93,9 @@ class TripleMap:
     # - (Column, str): object expression with explicit type (XSD IRI or "@lang")
     # - (Column, None): object expression treated as IRI (no type)
     # - RefObjectMap: object map that refers to the subject of another TripleMap
-    predicate_object_maps: list[tuple[PredicateMap, ObjectMap]]
-    # An optional IRI defining the rdf:type of the subject of the TripleMap.
-    rdf_type: Optional[str] = None
+    predicate_object_maps: list[PredicateObjectMap]
+    # An optional IRI or list of IRIs defining the rdf:type of the subject of the TripleMap.
+    rdf_type: Optional[Union[str, Column, list[str]]] = None
     # Optionally filter the data in the table before the transformation.
     filter: Optional[Column] = None
     # eliminate rows in the output with nulls in the object column
@@ -106,87 +117,6 @@ class TripleMap:
                 "Exactly one of source_table, source_query, or source_df must be provided"
             )
 
-    def rdfs_domain(self) -> list[tuple]:
-        if self.rdf_type:
-            return [
-                (pred, RDFS_DOMAIN_IRI, self.rdf_type)
-                for pred, _ in self.predicate_object_maps
-            ]
-        else:
-            return []
-
-    def _po_maps(self) -> Iterator[tuple[Column, Column, Optional[str]]]:
-        """Yields (predicate, object_expr, object_type) tuples.
-
-        object_type is either:
-        - A string (explicit type IRI or language tag)
-        - None (explicit IRI, no type)
-        - _INFER sentinel (infer type from schema)
-        """
-        if self.rdf_type is not None:
-            yield lit(RDF_TYPE_IRI), lit(self.rdf_type), None
-        for predicate, value in self.predicate_object_maps:
-            if isinstance(predicate, Column):
-                predicate_expr = predicate
-            else:
-                predicate_expr = lit(predicate)
-            if isinstance(value, tuple):
-                object_expr, object_type = value
-            else:
-                object_expr, object_type = value, _INFER  # Infer from schema
-            yield predicate_expr, object_expr, object_type
-
-    def to_df(self, spark: SparkSession) -> DataFrame:
-        """
-        Build a DataFrame of triples based on the TripleMap.
-        Output columns: s, p, o, ot (plus any metadata_columns).
-        """
-        if self.source_table:
-            source = spark.table(self.source_table)
-        elif self.source_query:
-            source = spark.sql(self.source_query)
-        elif self.source_df:
-            source = self.source_df
-        else:
-            assert False, "Unreachable"
-        metadata_columns = [
-            mc.alias(name) for name, mc in self.metadata_columns.items()
-        ]
-        filter_expr = self.filter if self.filter is not None else lit(True)
-
-        def resolve_object_type(object_expr: Column, object_type) -> Optional[str]:
-            """Resolve _INFER sentinel to actual XSD type from expression."""
-            if object_type is not _INFER:
-                return object_type
-            # Infer type from the column expression's result type
-            result_type = source.select(object_expr).schema[0].dataType
-            return _spark_type_to_xsd(result_type)
-
-        map_queries = (
-            source.select(
-                self.subject_map.alias(SUBJECT_COLUMN),
-                predicate_expr.alias(PREDICATE_COLUMN),
-                object_expr.alias(OBJECT_COLUMN),
-                lit(resolve_object_type(object_expr, object_type)).alias(
-                    OBJECT_TYPE_COLUMN
-                ),
-                *metadata_columns,
-            ).filter(filter_expr)
-            for predicate_expr, object_expr, object_type in self._po_maps()
-        )
-        union_df = reduce(lambda df1, df2: df1.union(df2), map_queries)
-        if self.filter_null_obj:
-            union_df = union_df.dropna(subset=OBJECT_COLUMN)
-        return union_df
-
-    def to_dp(self, spark: SparkSession, name: str) -> str:
-        """Create a Spark Declarative Pipelines flow for the TripleMap"""
-        warnings.warn(
-            "Please use to_materialized_view or to_temporary_view instead",
-            DeprecationWarning,
-        )
-        return self.to_materialized_view(spark, name)
-
     def to_materialized_view(self, spark: SparkSession, name: str) -> str:
         """Create a Spark Declarative Pipelines materialised view for the TripleMap"""
         from pyspark.pipelines import materialized_view
@@ -205,3 +135,210 @@ class TripleMap:
             return self.to_df(spark)
 
         return name
+
+
+class Mapping:
+    """A collection of TripleMaps. TripleMaps are identified by their IRI and may depend each other."""
+
+    @classmethod
+    def from_r2rml(cls, r2rml_file: str) -> "Mapping":
+        """Parse an R2RML file to extract TripleMaps."""
+        triple_maps = {}
+        g = Graph()
+        g.parse(r2rml_file, format="turtle")
+
+        for triple_map in g.subjects(RDF.type, R2RML.TriplesMap):
+
+            ### Step 1: Extract source
+            source_table = source_query = None
+            logical_table = g.value(triple_map, R2RML.logicalTable)
+            if table_name := g.value(logical_table, R2RML.tableName):
+                source_table = normalise_r2rml_sql_identifier(str(table_name))
+            elif sql_query := g.value(logical_table, R2RML.sqlQuery):
+                source_query = str(sql_query)
+            else:
+                raise R2RMLParseError(f"Logical table not provided in {triple_map}")
+
+            ### Step 2: Extract subject
+
+            subject_map_expr = term_map_to_column(
+                g, triple_map, R2RML.subject, R2RML.subjectMap
+            )
+
+            ### Step 3: Extract subject class
+            # TODO: handle multiple subject classes
+            subject_class = None
+            if subject_map := g.value(triple_map, R2RML.subjectMap):
+                subject_class = g.value(subject_map, R2RML["class"])
+
+            ### Step 4: Extract predicate object maps
+
+            predicate_object_maps = []
+            for predicate_object_map in g.objects(triple_map, R2RML.predicateObjectMap):
+                predicate = term_map_to_column(
+                    g, predicate_object_map, R2RML.predicate, R2RML.predicateMap
+                )
+
+                # First try to parse as a RefObjectMap
+                # We know its a RefObjectMap if there is an objectMap with an
+                # rr:parentTriplesMap reference
+                if (object_map := g.value(predicate_object_map, R2RML.objectMap)) and (
+                    parent_triples_map := g.value(object_map, R2RML.parentTriplesMap)
+                ):
+                    parent_mapping = str(parent_triples_map)
+                    join_conditions = [
+                        (g.value(jc, R2RML.child), g.value(jc, R2RML.parent))
+                        for jc in g.objects(predicate_object_map, R2RML.joinCondition)
+                    ]
+                    object_expr = RefObjectMap(
+                        parent_mapping=parent_mapping,
+                        join_conditions=join_conditions or None,
+                    )
+                # If not a RefObjectMap, it's a regular TermMap
+                else:
+                    object_expr = term_map_to_column(
+                        g, predicate_object_map, R2RML.object, R2RML.objectMap
+                    )
+
+                predicate_object_maps.append((predicate, object_expr))
+
+            triple_maps[triple_map] = TripleMap(
+                source_table=source_table,
+                source_query=source_query,
+                subject_map=subject_map_expr,
+                predicate_object_maps=predicate_object_maps,
+                rdf_type=str(subject_class) if subject_class is not None else None,
+            )
+
+        return cls(triple_maps)
+
+    def __init__(self, triple_maps: dict[str, TripleMap]):
+        self.triple_maps = triple_maps
+
+    def triple_map_to_df(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
+        """
+        Build a DataFrame of triples based on the TripleMap.
+        Output columns: s, p, o, ot (plus any metadata_columns).
+        """
+        triple_map = self.triple_maps[triple_map_iri]
+
+        if triple_map.source_table:
+            source = spark.table(triple_map.source_table)
+        elif triple_map.source_query:
+            source = spark.sql(triple_map.source_query)
+        elif triple_map.source_df:
+            source = triple_map.source_df
+        else:
+            assert False, "Unreachable"
+
+        metadata_columns = [
+            mc.alias(name) for name, mc in triple_map.metadata_columns.items()
+        ]
+        filter_expr = triple_map.filter if triple_map.filter is not None else lit(True)
+
+        dfs = (
+            source.select(
+                triple_map.subject_map.alias(SUBJECT_COLUMN),
+                predicate_expr.alias(PREDICATE_COLUMN),
+                object_expr.alias(OBJECT_COLUMN),
+                object_type.alias(OBJECT_TYPE_COLUMN),
+                *metadata_columns,
+            ).filter(filter_expr)
+            for predicate_expr, object_expr, object_type in self._po_maps(
+                triple_map, spark
+            )
+        )
+        dfs.append(self._rdf_types(triple_map, spark))
+        union_df = reduce(lambda df1, df2: df1.union(df2), dfs)
+        if triple_map.filter_null_obj:
+            union_df = union_df.dropna(subset=OBJECT_COLUMN)
+        return union_df
+
+    def _rdf_types(self, triple_map: str, spark: SparkSession) -> DataFrame:
+        if triple_map.rdf_type is None:
+            return spark.createDataFrame([], schema=TRIPLE_SCHEMA)
+        elif isinstance(triple_map.rdf_type, Column):
+            return spark.createDataFrame(
+                [(triple_map.subject_map, RDF_TYPE_IRI, triple_map.rdf_type)],
+                schema=TRIPLE_SCHEMA,
+            )
+        elif isinstance(triple_map.rdf_type, str):
+            return spark.createDataFrame(
+                [(triple_map.subject_map, RDF_TYPE_IRI, lit(triple_map.rdf_type))],
+                schema=TRIPLE_SCHEMA,
+            )
+        elif isinstance(triple_map.rdf_type, list):
+            return spark.createDataFrame(
+                [
+                    (triple_map.subject_map, RDF_TYPE_IRI, lit(rdf_type))
+                    for rdf_type in triple_map.rdf_type
+                ],
+                schema=TRIPLE_SCHEMA,
+            )
+        else:
+            raise ValueError(f"Invalid rdf_type: {triple_map.rdf_type}")
+
+    def _po_maps(
+        self,
+        source: DataFrame,
+        predicate_object_maps: list[PredicateObjectMap],
+        spark: SparkSession,
+    ) -> Iterator[PredicateObjectMap]:
+        """Yields (predicate, object_expr, object_type) tuples."""
+        for predicate_map, object_map in predicate_object_maps:
+            # Predicate
+            if isinstance(predicate_map, Column):
+                predicate_expr = predicate_map
+            elif isinstance(predicate_map, str):
+                predicate_expr = lit(predicate_map)
+            else:
+                raise ValueError(f"Invalid predicate map: {predicate_map}")
+
+            # Object
+            if isinstance(object_map, tuple):
+                object_expr, object_type = object_map
+            elif isinstance(object_map, RefObjectMap):
+                other_df = self.triple_map_to_df(object_map.parent_mapping, spark)
+                if object_map.join_conditions:
+                    joined = source.join(
+                        other_df,
+                        [col(jc[0]) == col(jc[1]) for jc in object_map.join_conditions],
+                        how="inner",
+                    )
+                object_expr = other_df.select(object_map.subject_map).alias(
+                    OBJECT_COLUMN
+                )
+            elif isinstance(object_map, Column):
+                # Infer type from the column expression's result type
+                result_type = source.select(object_map).schema[0].dataType
+                object_expr, object_type = object_map, _spark_type_to_xsd(result_type)
+            else:
+                raise ValueError(f"Invalid object map: {object_map}")
+
+            yield predicate_expr, object_expr, object_type
+
+    def to_df(self, spark: SparkSession) -> DataFrame:
+        return reduce(
+            lambda df1, df2: df1.union(df2),
+            [tm.to_df(spark) for tm in self.triple_maps.values()],
+        )
+
+
+def term_map_to_column(
+    g: Graph, triple_map: URIRef, shortcut_iri: URIRef, term_map_iri: URIRef
+) -> Column:
+    term_map = g.value(triple_map, term_map_iri)
+    if shortcut := g.value(triple_map, shortcut_iri):
+        return lit(str(shortcut))
+    elif template := g.value(term_map, R2RML.template):
+        return r2rml_template_to_format_string(str(template))
+    elif column := g.value(term_map, R2RML.column):
+        return col(normalise_r2rml_sql_identifier(str(column)))
+    elif constant := g.value(term_map, R2RML.constant):
+        return lit(str(constant))
+    else:
+        raise R2RMLParseError(f"Term map not supplied in {triple_map}")
+
+
+class R2RMLParseError(Exception):
+    pass
