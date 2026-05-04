@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import Iterator, Optional, Union
+from typing import Optional, Union
 
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.functions import array, col, explode, lit
@@ -46,7 +46,7 @@ class RefObjectMap:
 
     def _to_join_expr(self) -> Column:
         if self.join_conditions:
-            return ([col(jc[0]) == col(jc[1]) for jc in self.join_conditions],)
+            return [child == parent for child, parent in self.join_conditions]
         else:
             raise ValueError("No join conditions provided")
 
@@ -192,13 +192,23 @@ class Mapping:
                     parent_triples_map := g.value(object_map, R2RML.parentTriplesMap)
                 ):
                     parent_triple_map = str(parent_triples_map)
-                    join_conditions = [
-                        (g.value(jc, R2RML.child), g.value(jc, R2RML.parent))
-                        for jc in g.objects(predicate_object_map, R2RML.joinCondition)
-                    ]
+                    join_columns: list[tuple[Column, Column]] = []
+                    for jc in g.objects(predicate_object_map, R2RML.joinCondition):
+                        child = g.value(jc, R2RML.child)
+                        parent = g.value(jc, R2RML.parent)
+                        if child is None or parent is None:
+                            raise R2RMLParseError(
+                                f"joinCondition must supply rr:child and rr:parent in {jc}"
+                            )
+                        join_columns.append(
+                            (
+                                col(normalise_r2rml_sql_identifier(str(child))),
+                                col(normalise_r2rml_sql_identifier(str(parent))),
+                            )
+                        )
                     object_expr = RefObjectMap(
                         parent_triple_map=parent_triple_map,
-                        join_conditions=join_conditions or None,
+                        join_conditions=join_columns or None,
                     )
                 # If not a RefObjectMap, it's a regular TermMap
                 else:
@@ -221,15 +231,9 @@ class Mapping:
     def __init__(self, **triple_maps: TripleMap):
         self.triple_maps = triple_maps
 
-    def triple_map_to_df(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
-        """
-        Build a DataFrame of triples based on the TripleMap.
-        Output columns: s, p, o, ot (plus any metadata_columns).
-        """
+    def _triple_map_source(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
+        """Logical table rows for a TripleMap (same resolution as triple_map_to_df)."""
         triple_map = self.triple_maps[triple_map_iri]
-
-        subject_map = triple_map.subject_map.cast("string")
-
         if triple_map.source_table:
             source = spark.table(triple_map.source_table)
         elif triple_map.source_query:
@@ -241,6 +245,18 @@ class Mapping:
 
         if triple_map.filter is not None:
             source = source.filter(triple_map.filter)
+        return source
+
+    def triple_map_to_df(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
+        """
+        Build a DataFrame of triples based on the TripleMap.
+        Output columns: s, p, o, ot (plus any metadata_columns).
+        """
+        triple_map = self.triple_maps[triple_map_iri]
+
+        subject_map = triple_map.subject_map.cast("string")
+
+        source = self._triple_map_source(triple_map_iri, spark)
 
         # TODO: add metadata columns to the source DataFrame and ensure test coverage
         metadata_columns = [
@@ -272,7 +288,7 @@ class Mapping:
         rdf_type: Optional[Union[str, Column, list[str]]],
         spark: SparkSession,
     ) -> DataFrame:
-
+        """Expand an rdf_type configuration into a DataFrame."""
         if rdf_type is None:
             return spark.createDataFrame([], schema=TRIPLE_SCHEMA)
 
@@ -316,13 +332,16 @@ class Mapping:
             object_type = lit(object_type)
         elif isinstance(object_map, RefObjectMap):
             if object_map.join_conditions:
-                other_df = self.triple_map_to_df(object_map.parent_triple_map, spark)
+                parent_source = self._triple_map_source(
+                    object_map.parent_triple_map, spark
+                )
                 source = source.join(
-                    other_df,
+                    parent_source,
                     object_map._to_join_expr(),
                     how="inner",
                 )
             object_expr = self.triple_maps[object_map.parent_triple_map].subject_map
+            object_type = lit(None)
         elif isinstance(object_map, Column):
             # Infer type from the column expression's result type
             result_type = source.select(object_map).schema[0].dataType

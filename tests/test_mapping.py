@@ -4,7 +4,7 @@ from unittest import TestCase
 
 from pyspark import SparkContext
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import array_agg, col, lit, when
+from pyspark.sql.functions import array_agg, col, concat, lit, when
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
 from r2r import Mapping, TripleMap
@@ -14,6 +14,7 @@ from r2r.mapping import (
     OBJECT_COLUMN,
     OBJECT_TYPE_COLUMN,
     RDF_TYPE_IRI,
+    RefObjectMap,
 )
 
 XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
@@ -549,6 +550,91 @@ class TestMapping(TestCase):
                 self.assertEqual(row[OBJECT_TYPE_COLUMN], XSD_STRING)
             else:
                 self.fail(f"Unexpected predicate: {row[PREDICATE_COLUMN]}")
+
+    def test_ref_object_map_same_logical_source_no_join(self):
+        """RefObjectMap without join: parent subject is taken from the same logical row."""
+        rows = [(10, 99, "alpha"), (11, 99, "beta")]
+        df = self.spark.createDataFrame(
+            rows, ["assignee_id", "team_id", "label"]
+        )
+        teams = TripleMap(
+            source_df=df,
+            subject_map=concat(lit("http://ex.example/team/"), col("team_id")),
+            predicate_object_maps=[
+                ("http://ex.example/teamLabel", col("label")),
+            ],
+        )
+        assigns = TripleMap(
+            source_df=df,
+            subject_map=concat(lit("http://ex.example/person/"), col("assignee_id")),
+            predicate_object_maps=[
+                (
+                    "http://ex.example/inTeam",
+                    RefObjectMap(
+                        parent_triple_map="teams",
+                        join_conditions=None,
+                    ),
+                ),
+            ],
+        )
+        mapping = Mapping(teams=teams, assigns=assigns)
+        member_triples = (
+            mapping.triple_map_to_df("assigns", self.spark)
+            .filter(col(PREDICATE_COLUMN) == "http://ex.example/inTeam")
+            .collect()
+        )
+        self.assertEqual(len(member_triples), 2)
+        for row in member_triples:
+            self.assertEqual(row[OBJECT_COLUMN], "http://ex.example/team/99")
+
+    def test_ref_object_map_join_across_logical_sources(self):
+        """RefObjectMap with join: child rows are joined to the parent logical table on rr:child / rr:parent."""
+        users = self.spark.createDataFrame(
+            [(1, "Ann"), (2, "Bob")],
+            ["user_id", "name"],
+        )
+        orders = self.spark.createDataFrame(
+            [(100, 1, 10.0), (101, 2, 20.0), (102, 1, 5.0)],
+            ["order_id", "buyer_id", "total"],
+        )
+        users_tm = TripleMap(
+            source_df=users,
+            subject_map=concat(lit("http://ex.example/user/"), col("user_id")),
+            predicate_object_maps=[("http://ex.example/name", col("name"))],
+        )
+        orders_tm = TripleMap(
+            source_df=orders,
+            subject_map=concat(lit("http://ex.example/order/"), col("order_id")),
+            predicate_object_maps=[
+                (
+                    "http://ex.example/buyer",
+                    RefObjectMap(
+                        parent_triple_map="users",
+                        join_conditions=[(col("buyer_id"), col("user_id"))],
+                    ),
+                ),
+            ],
+        )
+        mapping = Mapping(users=users_tm, orders=orders_tm)
+        buyer_triples = (
+            mapping.triple_map_to_df("orders", self.spark)
+            .filter(col(PREDICATE_COLUMN) == "http://ex.example/buyer")
+            .collect()
+        )
+        self.assertEqual(len(buyer_triples), 3)
+        by_order_subject = {row[SUBJECT_COLUMN]: row[OBJECT_COLUMN] for row in buyer_triples}
+        self.assertEqual(
+            by_order_subject["http://ex.example/order/100"],
+            "http://ex.example/user/1",
+        )
+        self.assertEqual(
+            by_order_subject["http://ex.example/order/101"],
+            "http://ex.example/user/2",
+        )
+        self.assertEqual(
+            by_order_subject["http://ex.example/order/102"],
+            "http://ex.example/user/1",
+        )
 
 
 if __name__ == "__main__":
