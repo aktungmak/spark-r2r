@@ -354,12 +354,13 @@ class Mapping:
         """Create a Spark Declarative Pipeline for the Mapping."""
         from pyspark.pipelines import materialized_view, temporary_view
 
-        for iri in self.triple_maps.keys():
-            decorator = (
-                materialized_view if materialize_intermediates else temporary_view
-            )
+        decorator = materialized_view if materialize_intermediates else temporary_view
 
-            @decorator(name=iri)
+        for i, iri in enumerate(self.triple_maps.keys()):
+
+            @decorator(
+                name=f"intermediate_{i}", table_properties={"triple_map_iri": iri}
+            )
             def t():
                 return self.triple_map_to_df(iri, spark)
 
@@ -367,7 +368,10 @@ class Mapping:
         def all_triples():
             return reduce(
                 lambda df1, df2: df1.union(df2),
-                [self.triple_map_to_df(iri, spark) for iri in self.triple_maps.keys()],
+                [
+                    spark.table(f"intermediate_{i}")
+                    for i in range(len(self.triple_maps))
+                ],
             )
 
     def __len__(self) -> int:
