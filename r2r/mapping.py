@@ -123,25 +123,6 @@ class TripleMap:
                 "Exactly one of source_table, source_query, or source_df must be provided"
             )
 
-    def to_materialized_view(self, spark: SparkSession, name: str) -> str:
-        """Create a Spark Declarative Pipelines materialised view for the TripleMap"""
-        from pyspark.pipelines import materialized_view
-
-        return self._to_dp(materialized_view, spark, name)
-
-    def to_temporary_view(self, spark: SparkSession, name: str) -> str:
-        """Create a Spark Declarative Pipelines temporary view for the TripleMap"""
-        from pyspark.pipelines import temporary_view
-
-        return self._to_dp(temporary_view, spark, name)
-
-    def _to_dp(self, decorator, spark: SparkSession, name: str) -> str:
-        @decorator(name=name)
-        def t():
-            return self.to_df(spark)
-
-        return name
-
 
 class Mapping:
     """A collection of TripleMaps. TripleMaps are identified by their IRI and may depend each other."""
@@ -232,7 +213,7 @@ class Mapping:
         self.triple_maps = triple_maps
 
     def _triple_map_source(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
-        """Logical table rows for a TripleMap (same resolution as triple_map_to_df)."""
+        """Get the source DataFrame for a TripleMap depending on the configured source type."""
         triple_map = self.triple_maps[triple_map_iri]
         if triple_map.source_table:
             source = spark.table(triple_map.source_table)
@@ -250,7 +231,7 @@ class Mapping:
     def triple_map_to_df(self, triple_map_iri: str, spark: SparkSession) -> DataFrame:
         """
         Build a DataFrame of triples based on the TripleMap.
-        Output columns: s, p, o, ot (plus any metadata_columns).
+        Output conforms to TRIPLE_SCHEMA (plus any metadata_columns).
         """
         triple_map = self.triple_maps[triple_map_iri]
 
@@ -358,10 +339,36 @@ class Mapping:
         )
 
     def to_df(self, spark: SparkSession) -> DataFrame:
+        """Union all the TripleMaps into a single DataFrame."""
         return reduce(
             lambda df1, df2: df1.union(df2),
             [self.triple_map_to_df(iri, spark) for iri in self.triple_maps.keys()],
         )
+
+    def to_dp(
+        self,
+        spark: SparkSession,
+        materialized_view_name: str,
+        materialize_intermediates: bool = True,
+    ):
+        """Create a Spark Declarative Pipeline for the Mapping."""
+        from pyspark.pipelines import materialized_view, temporary_view
+
+        for iri in self.triple_maps.keys():
+            decorator = (
+                materialized_view if materialize_intermediates else temporary_view
+            )
+
+            @decorator(name=iri)
+            def t():
+                return self.triple_map_to_df(iri, spark)
+
+        @materialized_view(name=materialized_view_name)
+        def all_triples():
+            return reduce(
+                lambda df1, df2: df1.union(df2),
+                [self.triple_map_to_df(iri, spark) for iri in self.triple_maps.keys()],
+            )
 
     def __len__(self) -> int:
         return len(self.triple_maps)
