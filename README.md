@@ -13,7 +13,7 @@ The main entry point is the `Mapping` class:
 ```python
 from r2r import Mapping
 
-m = Mapping(
+m = TripleMap(
         source="system.information_schema.catalogs",
         subject_map=iri.catalog("catalog_name"),
         rdf_type=iri.type("catalog"),

@@ -17,8 +17,14 @@ $(RDB2RDF_ZIP):
 $(RDB2RDF_MANIFEST): $(RDB2RDF_ZIP)
 	cd $(RDB2RDF_CACHE) && unzip -o -q rdb2rdf-ts.zip
 
+# Local Spark warehouse dir is removed after each conformance test run
+SPARK_WAREHOUSE := spark-warehouse
+
 conformance-tests: install $(RDB2RDF_MANIFEST)
-	RDB2RDF_TS_DIR=$(abspath $(RDB2RDF_CACHE)) venv/bin/python -m tests.conformance
+	RDB2RDF_TS_DIR=$(abspath $(RDB2RDF_CACHE)) venv/bin/python -m tests.conformance; \
+	ec=$$?; \
+	rm -rf $(SPARK_WAREHOUSE); \
+	exit $$ec
 
 conformance-tests-clean:
 	rm -rf $(RDB2RDF_CACHE)

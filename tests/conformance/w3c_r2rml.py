@@ -10,12 +10,12 @@ from __future__ import annotations
 import re
 import unittest
 from functools import reduce
+from pathlib import Path
 from typing import cast
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
+from pyspark.sql import SparkSession
 
-from r2r import from_r2rml
+from r2r import R2RMLParseError, from_r2rml
 
 from tests.conformance import cmp, sql_exec
 from tests.conformance.manifest import (
@@ -42,16 +42,19 @@ def _method_name(w3c_id: str) -> str:
     return f"test_{s}"
 
 
+def _setup_fixture_db(sp: SparkSession, sql_path: Path, db: str) -> None:
+    """Run W3C ``create.sql`` into ``db`` and select it. Let exceptions propagate."""
+    sql_exec.run_sql_file(sp, sql_path, db)
+    sp.sql(f"USE {db}")
+
+
 def _run_positive_r2rml_to_graph(sp: SparkSession, r2rml_path: str) -> Graph:
-    mlist = list(from_r2rml(r2rml_path, sp))
-    if not mlist:
-        return Graph()
-    dfs: list[DataFrame] = [m.to_df(sp) for m in mlist]
-    acc: DataFrame = reduce(lambda a, b: a.union(b), dfs)
-    for c in ("s", "p", "o", "ot"):
-        if c not in acc.columns:
-            acc = acc.withColumn(c, F.lit(None).cast("string"))
-    return cmp.data_frame_to_graph(acc)
+    return cmp.data_frame_to_graph(
+        reduce(
+            lambda a, b: a.union(b),
+            [m.to_df(sp) for _, m in from_r2rml(r2rml_path)],
+        )
+    )
 
 
 def _body(self: "W3CConformanceTest", tc: R2RMLTestCase) -> None:
@@ -63,23 +66,11 @@ def _body(self: "W3CConformanceTest", tc: R2RMLTestCase) -> None:
     self.assertTrue(sql_path.is_file(), f"missing SQL: {sql_path}")
     self.assertTrue(map_path.is_file(), f"missing mapping: {map_path}")
     sql_exec.drop_test_database(sp, db)
+    _setup_fixture_db(sp, sql_path, db)
     if not tc.has_expected_output:
-        had_sql = False
-        try:
-            sql_exec.run_sql_file(sp, sql_path, db)
-            had_sql = True
-        except Exception:  # noqa: BLE001
-            had_sql = False
-        if had_sql:
-            sp.sql(f"USE {db}")
-        with self.assertRaises(Exception):
+        with self.assertRaises(R2RMLParseError):
             _run_positive_r2rml_to_graph(sp, str(map_path))
         return
-    try:
-        sql_exec.run_sql_file(sp, sql_path, db)
-    except Exception as exc:  # noqa: BLE001
-        self.fail(f"SQL setup failed for {tc.w3c_id}: {exc!s}")
-    sp.sql(f"USE {db}")
     g_actual = _run_positive_r2rml_to_graph(sp, str(map_path))
     if not tc.output_file:
         self.fail(
