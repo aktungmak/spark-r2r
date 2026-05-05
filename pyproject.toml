@@ -6,8 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "r2r"
 version = "0.7.0"
 description = "A relational to RDF mapper for spark, supporting R2RML"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "pyspark",
     "rdflib",
+]
+
+[project.optional-dependencies]
+test-pipelines = [
+    "pyspark[pipelines]",
 ]

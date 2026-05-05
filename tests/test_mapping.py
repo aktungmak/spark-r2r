@@ -405,18 +405,6 @@ class TestMapping(TestCase):
         ]
         self.assertEqual(result_df.columns, expected_columns)
 
-    def test_to_dp_method(self):
-        """Test the to_dp method (basic functionality test)."""
-        self.skipTest("Declarative Pipelines not available in test environment")
-        mapping = TripleMap(
-            source_df=self.users_df,
-            subject_map=col("id"),
-            predicate_object_maps=[("name", col("name"))],
-        )
-
-        result = mapping.to_dp(self.spark, "test_table")
-        self.assertEqual(result, "test_table")
-
     def test_multiple_triple_maps(self):
         """Test Mapping with multiple TripleMaps."""
         mapping = Mapping(
@@ -554,9 +542,7 @@ class TestMapping(TestCase):
     def test_ref_object_map_same_logical_source_no_join(self):
         """RefObjectMap without join: parent subject is taken from the same logical row."""
         rows = [(10, 99, "alpha"), (11, 99, "beta")]
-        df = self.spark.createDataFrame(
-            rows, ["assignee_id", "team_id", "label"]
-        )
+        df = self.spark.createDataFrame(rows, ["assignee_id", "team_id", "label"])
         teams = TripleMap(
             source_df=df,
             subject_map=concat(lit("http://ex.example/team/"), col("team_id")),
@@ -622,7 +608,9 @@ class TestMapping(TestCase):
             .collect()
         )
         self.assertEqual(len(buyer_triples), 3)
-        by_order_subject = {row[SUBJECT_COLUMN]: row[OBJECT_COLUMN] for row in buyer_triples}
+        by_order_subject = {
+            row[SUBJECT_COLUMN]: row[OBJECT_COLUMN] for row in buyer_triples
+        }
         self.assertEqual(
             by_order_subject["http://ex.example/order/100"],
             "http://ex.example/user/1",
