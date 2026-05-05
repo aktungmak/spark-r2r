@@ -174,7 +174,7 @@ class Mapping:
                 ):
                     parent_triple_map = str(parent_triples_map)
                     join_columns: list[tuple[Column, Column]] = []
-                    for jc in g.objects(predicate_object_map, R2RML.joinCondition):
+                    for jc in g.objects(object_map, R2RML.joinCondition):
                         child = g.value(jc, R2RML.child)
                         parent = g.value(jc, R2RML.parent)
                         if child is None or parent is None:
